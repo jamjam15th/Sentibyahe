@@ -10,20 +10,26 @@ if "logged_in" not in st.session_state:
 
 # 3. Define the Pages
 login_page = st.Page("login.py", title="Log in", icon="🔐")
-dashboard_page = st.Page("sentiment_analysis.py", title="Dashboard", icon="📊")
+testing_page = st.Page("sentiment_analysis.py", title="Testing", icon="📝")
+builder_page = st.Page("builder.py", title="Form Builder", icon="🛠️")
 settings_page = st.Page("settings.py", title="Settings", icon="⚙️")
+public_form_page = st.Page("public_form.py", title="Take Survey", icon="📝", url_path="survey")
+dashboard_page = st.Page("dashboard.py", title="Sentiment Dashboard", icon="📊")
 
 # 4. The Router Logic
 if st.session_state.logged_in:
     # If logged in, show the Dashboard
 
-    pg = st.navigation([dashboard_page, settings_page], position="hidden")
+    pg = st.navigation([dashboard_page, builder_page, testing_page, settings_page, public_form_page], position="hidden")
 
     with st.sidebar:
         st.write(f"**{st.session_state.user_email}**")
         st.divider()
 
         st.page_link(dashboard_page)
+        st.page_link(testing_page)
+        st.page_link(builder_page)
+        st.page_link(public_form_page)
         st.page_link(settings_page)
 
         # The Logout Button
@@ -33,7 +39,9 @@ if st.session_state.logged_in:
             st.rerun()
 else:
     # If NOT logged in, ONLY show the Login Page
-    pg = st.navigation([login_page])
-
+    pg = st.navigation({
+        "Commuter Survey": [public_form_page], # <--- THIS IS FIRST!
+        "Admin Access": [login_page]
+    })
 # 5. Run the selected page
 pg.run()

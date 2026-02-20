@@ -9,16 +9,6 @@ st.write("Using a Fine-Tuned XLM-RoBERTa")
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
-try:
-    response = conn.table("mytable").select("*").execute()
-    if response.data:
-        for row in response.data:
-            st.write(f"{row.get('name', 'Unknown')} has a {row.get('pet', 'pet')}")
-    else:
-        st.info("No data found in 'mytable'")
-except Exception as e:
-    st.error(f"Database Error: {e}")
-
 @st.cache_resource 
 def load_sentiment_model():
     model_path = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
