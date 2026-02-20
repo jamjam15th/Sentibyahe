@@ -1,10 +1,23 @@
 import streamlit as st
 from transformers import pipeline
+from st_supabase_connection import SupabaseConnection
 import torch
 
 st.set_page_config(page_title="Thesis: Sentiment Analysis", page_icon="📊")
 st.title("📊 Multilingual Sentiment Analysis")
 st.write("Using a Fine-Tuned XLM-RoBERTa")
+
+conn = st.connection("supabase", type=SupabaseConnection)
+
+try:
+    response = conn.table("mytable").select("*").execute()
+    if response.data:
+        for row in response.data:
+            st.write(f"{row.get('name', 'Unknown')} has a {row.get('pet', 'pet')}")
+    else:
+        st.info("No data found in 'mytable'")
+except Exception as e:
+    st.error(f"Database Error: {e}")
 
 @st.cache_resource 
 def load_sentiment_model():
