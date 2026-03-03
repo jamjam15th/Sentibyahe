@@ -11,7 +11,7 @@ admin_email = st.session_state.user_email
 # This mathematically scrambles your email into a consistent 12-character ID
 public_id = hashlib.md5(admin_email.encode()).hexdigest()[:12]
 
-# --- GENERATE SHAREABLE LINK ---
+# DYNAMICALLY FIND THE CURRENT URL
 try:
     host = st.context.headers.get("Host")
     protocol = "https" if "localhost" not in host else "http"
@@ -19,8 +19,8 @@ try:
 except Exception:
     base_url = "http://localhost:8501" 
 
-# Notice it now says ?form_id= instead of ?admin=
-shareable_link = f"{base_url}/?form_id={public_id}"
+# UPDATE THIS LINE: Add /survey before the ?form_id
+shareable_link = f"{base_url}/survey?form_id={public_id}" 
 
 st.info(f"🔗 **Your Unique Survey Link:**\n\n[{shareable_link}]({shareable_link}) \n\n*Copy and send this link to your commuters!*")
 st.divider()
