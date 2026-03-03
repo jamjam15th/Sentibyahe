@@ -63,14 +63,14 @@ tab1, tab2, tab3 = st.tabs(["💬 Sentiment Analysis", "📊 Quantitative Result
 # Containers to hold the content
 with tab1:
     sel_text_q = st.selectbox("Select feedback question:", text_qs, key="text_static") if text_qs else None
-    sentiment_spot = st.container()
+    sentiment_spot = st.empty()
 
 with tab2:
     sel_quant_q = st.selectbox("Select quantitative question:", quant_qs, key="quant_static") if quant_qs else None
-    quant_spot = st.container()
+    quant_spot = st.empty()
 
 with tab3:
-    demo_spot = st.container()
+    demo_spot = st.empty()
 
 # --- 5. THE DRAWING FUNCTION ---
 def render_dashboard_content(responses):
@@ -88,7 +88,7 @@ def render_dashboard_content(responses):
     }
 
     # --- TAB 1: SENTIMENT ---
-    with sentiment_spot:
+    with sentiment_spot.container():
         if sel_text_q and sel_text_q in df_all.columns:
             valid_texts = df_all[sel_text_q].dropna().astype(str)
             valid_texts = valid_texts[valid_texts.str.strip() != ""]
@@ -120,7 +120,7 @@ def render_dashboard_content(responses):
                     c2.metric("Positive Rate", f"{rate:.1f}%")
                 
                 # Show the stable table
-                st.dataframe(df_sent, use_container_width=True, hide_index=True)
+                st.dataframe(df_sent, use_container_width=True, hide_index=True, key=f"df_{len(responses)}")
 
     # --- TAB 2: QUANTITATIVE ---
     with quant_spot:
