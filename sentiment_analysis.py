@@ -34,10 +34,3 @@ if st.button("Analyze Sentiment"):
         else:
             st.info(f"**Sentiment: {label}** (Confidence: {score:.2f})")
 
-def add_question():
-    with st.form("my form"):
-        st.write("Inside the form")
-        input_1 = st.text_input("What is your current say in transportation?")
-        submitted = st.form_submit_button("Submit")
-
-st.button("Add Question", on_click=add_question)
