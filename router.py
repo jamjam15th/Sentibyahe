@@ -22,7 +22,7 @@ query_params = st.query_params
 if "form_id" in query_params:
     # If the URL has a form_id, force Streamlit to ONLY load the public form.
     # No sidebar, no login, just the survey!
-    pg = st.navigation([public_form_page], position="hidden")
+    pg = st.navigation([public_form_page], position="sidebar")
 
 # SCENARIO B: An Admin is fully logged in
 elif st.session_state.logged_in:
