@@ -20,7 +20,7 @@ except Exception:
     base_url = "http://localhost:8501" 
 
 # UPDATE THIS LINE: Add /survey before the ?form_id
-shareable_link = f"{base_url}/survey?form_id={public_id}" 
+shareable_link = f"{base_url}/?form_id={public_id}" 
 
 st.info(f"🔗 **Your Unique Survey Link:**\n\n[{shareable_link}]({shareable_link}) \n\n*Copy and send this link to your commuters!*")
 st.divider()
