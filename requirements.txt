@@ -5,3 +5,5 @@ pandas
 transformers
 torch
 tiktoken
+sentencepiece
+protobuf
