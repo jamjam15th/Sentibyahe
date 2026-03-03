@@ -18,7 +18,7 @@ else:
     target_form_id = query_params["form_id"]
 
 # --- 2. BUILD THE FORM ---
-st.title("🚐 Modernized PUV Feedback Form")
+st.title("🚐 PUV Feedback Form")
 st.write("Please share your honest experience. Your feedback is completely anonymous.")
 
 conn = st.connection("supabase", type=SupabaseConnection)
