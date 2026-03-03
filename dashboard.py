@@ -8,11 +8,19 @@ st.set_page_config(page_title="Live Sentiment Dashboard", layout="wide")
 # 2. CSS SHIELD (Stops flickering/dimming)
 st.markdown("""
     <style>
+    /* Prevents the 'seizure' flickering during refreshes */
     div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stFragment"]) {
         opacity: 1 !important;
     }
+    
+    /* Hide the default Streamlit menu buttons but KEEP the header bar */
     #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
+    
+    /* Ensure the sidebar toggle (the arrow) is visible and clickable */
+    [data-testid="stSidebarCollapsedControl"] {
+        visibility: visible !important;
+        display: flex !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
