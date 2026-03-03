@@ -1,0 +1,6 @@
+streamlit
+st-supabase-connection
+supabase
+pandas
+transformers
+torch
