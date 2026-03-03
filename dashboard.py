@@ -23,7 +23,7 @@ conn = st.connection("supabase", type=SupabaseConnection)
 
 # Initialize a counter in session state to track data changes
 if "last_total_responses" not in st.session_state:
-    st.session_state.last_total_responses = 0
+    st.session_state.last_total_responses = -1
 
 # 3. CACHED RESOURCES
 @st.cache_resource(show_spinner="Initializing AI Engine...")
@@ -71,13 +71,12 @@ with tab3:
 # 5. THE SMART FRAGMENT (Conditional Rerunning)
 @st.fragment(run_every=5)
 def live_dashboard_view():
-    # A. Quick check for new data
     _, responses = fetch_live_data(admin_email)
     current_count = len(responses)
     
     # B. If no new data has arrived, STOP here. (Prevents flickering)
     if current_count == st.session_state.last_total_responses:
-        return
+            return
     
     # C. Data is new! Update the state and process
     st.session_state.last_total_responses = current_count
