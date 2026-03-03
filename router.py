@@ -23,12 +23,25 @@ if "form_id" in query_params:
     # If the URL has a form_id, force Streamlit to ONLY load the public form.
     # No sidebar, no login, just the survey!
     pg = st.navigation([public_form_page], position="hidden")
-    
+
 # SCENARIO B: An Admin is fully logged in
 elif st.session_state.logged_in:
     # Load all the admin tools and hide the default ugly Streamlit menu
     pg = st.navigation([dashboard_page, builder_page, testing_page, settings_page, public_form_page], position="sidebar")
 
+    # 2. Add this CSS to hide the 'default' menu but keep the 'arrow' toggle
+    st.markdown("""
+        <style>
+            /* Hides the default Streamlit nav links */
+            [data-testid="stSidebarNav"] {display: none;}
+            
+            /* Ensures the sidebar toggle (arrow) is always visible */
+            [data-testid="stSidebarCollapsedControl"] {
+                display: flex;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Build your custom, beautiful sidebar
     with st.sidebar:
         first_name = st.session_state.get("first_name", "Admin")
