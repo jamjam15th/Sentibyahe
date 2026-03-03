@@ -25,6 +25,7 @@ conn = st.connection("supabase", type=SupabaseConnection)
 @st.cache_resource(show_spinner="Initializing AI Engine...")
 def load_model():
     from transformers import pipeline
+    # Specific model for Taglish Sentiment
     model_path = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
     return pipeline("sentiment-analysis", model=model_path, device=-1)
 
@@ -32,9 +33,12 @@ sentiment_analyzer = load_model()
 
 @st.cache_data(ttl=2)
 def fetch_live_data(email):
-    q = conn.client.table("form_questions").select("*").eq("admin_email", email).execute()
-    r = conn.client.table("form_responses").select("*").eq("admin_email", email).execute()
-    return q.data, r.data
+    try:
+        q = conn.client.table("form_questions").select("*").eq("admin_email", email).execute()
+        r = conn.client.table("form_responses").select("*").eq("admin_email", email).execute()
+        return q.data, r.data
+    except:
+        return [], []
 
 # 4. STATIC UI SETUP
 st.title("📊 Smart Sentiment Dashboard")
@@ -50,15 +54,16 @@ text_qs = [q["prompt"] for q in schema if q["q_type"] in ["Short Answer", "Parag
 quant_qs = [q["prompt"] for q in schema if q["q_type"] in ["Multiple Choice", "Rating (1-5)"] and not q.get("is_demographic")]
 demo_qs = [q["prompt"] for q in schema if q.get("is_demographic")]
 
-# Initialize the counter to the current database state immediately
-st.session_state.last_total_responses = len(initial_responses)
+# Track the last count to prevent unnecessary AI re-processing
+if "last_total_responses" not in st.session_state:
+    st.session_state.last_total_responses = len(initial_responses)
 
 tab1, tab2, tab3 = st.tabs(["💬 Sentiment Analysis", "📊 Quantitative Results", "👥 Demographics"])
 
-# Placeholders
+# Containers to hold the content
 with tab1:
     sel_text_q = st.selectbox("Select feedback question:", text_qs, key="text_static") if text_qs else None
-    sentiment_spot = st.container() # Using container instead of empty for better persistence
+    sentiment_spot = st.container()
 
 with tab2:
     sel_quant_q = st.selectbox("Select quantitative question:", quant_qs, key="quant_static") if quant_qs else None
@@ -67,49 +72,78 @@ with tab2:
 with tab3:
     demo_spot = st.container()
 
-# --- 5. THE DRAWING FUNCTION (Used by both Initial Load and Fragment) ---
+# --- 5. THE DRAWING FUNCTION ---
 def render_dashboard_content(responses):
     if not responses:
-        st.info("Waiting for commuter feedback...")
         return
 
     df_all = pd.DataFrame([r.get("answers", {}) for r in responses])
-    label_map = {"LABEL_0": "NEGATIVE", "LABEL_1": "NEUTRAL", "LABEL_2": "POSITIVE"}
+    
+    # SAFER LABEL MAPPING
+    # This handles both 'LABEL_0' and 'negative' formats
+    label_map = {
+        "LABEL_0": "NEGATIVE", "negative": "NEGATIVE",
+        "LABEL_1": "NEUTRAL", "neutral": "NEUTRAL",
+        "LABEL_2": "POSITIVE", "positive": "POSITIVE"
+    }
 
-    # TAB 1: SENTIMENT
+    # --- TAB 1: SENTIMENT ---
     with sentiment_spot:
         if sel_text_q and sel_text_q in df_all.columns:
             valid_texts = df_all[sel_text_q].dropna().astype(str)
             valid_texts = valid_texts[valid_texts.str.strip() != ""]
+            
             if not valid_texts.empty:
-                results = [
-                    {"Feedback": t, "Sentiment": label_map.get(sentiment_analyzer(t)[0]['label']), "Score": round(sentiment_analyzer(t)[0]['score'], 4)}
-                    for t in valid_texts
-                ]
+                results = []
+                for t in valid_texts:
+                    raw_res = sentiment_analyzer(t)[0]
+                    # Fallback to the raw label if it's not in our map
+                    clean_label = label_map.get(raw_res['label'], raw_res['label'].upper())
+                    results.append({
+                        "Feedback": t, 
+                        "Sentiment": clean_label, 
+                        "Score": round(raw_res['score'], 4)
+                    })
+                
                 df_sent = pd.DataFrame(results)
+                
                 c1, c2 = st.columns([2, 1])
-                c1.bar_chart(df_sent['Sentiment'].value_counts(), color="#4F8BF9")
-                c2.metric("Total", len(df_sent))
+                sentiment_counts = df_sent['Sentiment'].value_counts()
+                
+                # Plot the graph
+                c1.bar_chart(sentiment_counts, color="#4F8BF9")
+                
+                # Show metrics
+                c2.metric("Total Analyzed", len(df_sent))
+                if "POSITIVE" in sentiment_counts:
+                    rate = (sentiment_counts["POSITIVE"] / len(df_sent)) * 100
+                    c2.metric("Positive Rate", f"{rate:.1f}%")
+                
+                # Show the stable table
                 st.dataframe(df_sent, use_container_width=True, hide_index=True)
 
-    # TAB 2: QUANTITATIVE
+    # --- TAB 2: QUANTITATIVE ---
     with quant_spot:
         if sel_quant_q and sel_quant_q in df_all.columns:
-            st.bar_chart(df_all[sel_quant_q].value_counts().sort_index(), color="#FF4B4B")
+            q_counts = df_all[sel_quant_q].value_counts().sort_index()
+            st.bar_chart(q_counts, color="#FF4B4B")
+            st.dataframe(q_counts.reset_index(name="Votes"), hide_index=True)
 
-    # TAB 3: DEMOGRAPHICS
+    # --- TAB 3: DEMOGRAPHICS ---
     with demo_spot:
         if demo_qs:
-            st.dataframe(df_all[demo_qs].dropna(how="all"), use_container_width=True, hide_index=True)
+            df_demo = df_all[demo_qs].dropna(how="all")
+            st.dataframe(df_demo, use_container_width=True, hide_index=True)
 
 # --- 6. EXECUTION LOGIC ---
-# First Draw: Happens immediately on page switch
+# Initial Load
 render_dashboard_content(initial_responses)
 
-# Smart Refresh: Only updates if new data arrives
+# Smart Refresh
 @st.fragment(run_every=5)
 def auto_refresh_fragment():
     _, current_responses = fetch_live_data(admin_email)
+    # Check if a new row was added to the database
     if len(current_responses) != st.session_state.last_total_responses:
         st.session_state.last_total_responses = len(current_responses)
         render_dashboard_content(current_responses)
