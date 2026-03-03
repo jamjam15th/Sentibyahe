@@ -19,11 +19,19 @@ dashboard_page = st.Page("dashboard.py", title="Sentiment Dashboard", icon="📊
 # 4. The Router Logic
 if st.session_state.logged_in:
     # If logged in, show the Dashboard
-
     pg = st.navigation([dashboard_page, builder_page, testing_page, settings_page, public_form_page], position="hidden")
 
     with st.sidebar:
-        st.write(f"**{st.session_state.user_email}**")
+        # Safely get the names from session state, defaulting to "Admin" if missing
+        first_name = st.session_state.get("first_name", "Admin")
+        last_name = st.session_state.get("last_name", "")
+        
+        # Display the full name in bold
+        st.write(f"👤 **{first_name} {last_name}**")
+        
+        # Optional: Display the email in small gray text underneath so they still know which account they are on
+        st.caption(st.session_state.get("user_email", ""))
+        
         st.divider()
 
         st.page_link(dashboard_page)
@@ -36,6 +44,9 @@ if st.session_state.logged_in:
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.logged_in = False
             st.session_state.user_email = ""
+            # Clear the names on logout too!
+            st.session_state.first_name = "" 
+            st.session_state.last_name = ""
             st.rerun()
 else:
     # If NOT logged in, ONLY show the Login Page
