@@ -1,6 +1,8 @@
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
 
+st.set_page_config(initial_sidebar_state="collapsed")
+
 st.title("🔐 Access Portal")
 
 conn = st.connection("supabase", type=SupabaseConnection)
