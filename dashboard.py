@@ -2,63 +2,82 @@ import streamlit as st
 import pandas as pd
 from st_supabase_connection import SupabaseConnection
 
-st.title("📊 Live Sentiment Dashboard")
-st.write("Monitoring commuter feedback in real-time. Updates every 5 seconds.")
+# 1. Page Config
+st.set_page_config(page_title="Live Sentiment Dashboard", layout="wide")
+
+# 2. CSS Shield: This stops the 'seizure' flicker and the gray overlay
+st.markdown("""
+    <style>
+    /* Keeps the app from dimming during fragment refreshes */
+    div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stFragment"]) {
+        opacity: 1 !important;
+    }
+    /* Optional: Hides the 'Running...' spinner in the top right for a cleaner look */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
-# --- 1. PROTECTIVE CACHING ---
-# We cache the model so it doesn't reload on every fragment refresh
+# --- 3. PROTECTIVE CACHING ---
 @st.cache_resource(show_spinner="Initializing AI Engine...")
 def load_model():
     from transformers import pipeline
+    # Use your XLM-RoBERTa path here later
     return pipeline("sentiment-analysis", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english")
 
 sentiment_analyzer = load_model()
 
-# We cache the database pull for 5 seconds to prevent overloading Supabase
 @st.cache_data(ttl=5)
 def fetch_live_supabase_data(admin_email):
     q_res = conn.client.table("form_questions").select("*").eq("admin_email", admin_email).execute()
     r_res = conn.client.table("form_responses").select("*").eq("admin_email", admin_email).execute()
     return q_res.data, r_res.data
 
-# --- 2. THE FRAGMENT ENGINE ---
+# --- 4. STATIC UI ELEMENTS (These do not flicker) ---
+st.title("📊 Live Sentiment Dashboard")
+st.write("Real-time commuter analytics. Tables and charts update seamlessly.")
+
+admin_email = st.session_state.get("user_email")
+
+# Fetch schema once to build the tabs/selectors
+schema, initial_responses = fetch_live_supabase_data(admin_email)
+
+# TABS stay OUTSIDE the fragment so they don't reset
+tab1, tab2, tab3 = st.tabs(["💬 Sentiment Analysis", "📊 Quantitative Results", "👥 Demographics"])
+
+# --- 5. THE SMOOTH FRAGMENT ENGINE ---
 @st.fragment(run_every=5)
 def live_dashboard_view():
-    # Fetch Data
-    admin_email = st.session_state.get("user_email")
-    schema, responses = fetch_live_supabase_data(admin_email)
+    # Fetch fresh data
+    _, responses = fetch_live_supabase_data(admin_email)
 
     if not responses:
         st.info("Waiting for commuters to submit feedback...")
         return 
 
-    # Process Data
     flat_responses = [r.get("answers", {}) for r in responses]
     df_all = pd.DataFrame(flat_responses)
 
-    # Smart Sorting based on Schema
+    # Sorting logic
     demo_questions = [q["prompt"] for q in schema if q.get("is_demographic")]
     text_questions = [q["prompt"] for q in schema if q["q_type"] in ["Short Answer", "Paragraph"] and not q.get("is_demographic")]
     quant_questions = [q["prompt"] for q in schema if q["q_type"] in ["Multiple Choice", "Rating (1-5)"] and not q.get("is_demographic")]
 
-    # --- THE TABS (Inside the Fragment) ---
-    tab1, tab2, tab3 = st.tabs(["💬 Sentiment Analysis", "📊 Quantitative Results", "👥 Demographics"])
-
-    # TAB 1: SENTIMENT
+    # --- TAB 1: SENTIMENT (Smooth) ---
     with tab1:
-        st.header("Sentiment Analysis")
-        if not text_questions:
-            st.info("No text-based questions available.")
-        else:
-            target_text_q = st.selectbox("Select question to analyze:", text_questions, key="sent_q")
+        if text_questions:
+            target_text_q = st.selectbox("Select question to analyze:", text_questions, key="sent_q_static")
+            
+            # Use placeholders for the visuals so they don't jump
+            chart_placeholder = st.empty()
+            table_placeholder = st.empty()
+
             valid_texts = df_all[target_text_q].dropna().astype(str)
             valid_texts = valid_texts[valid_texts.str.strip() != ""]
             
-            if valid_texts.empty:
-                st.warning("No answers submitted for this question yet.")
-            else:
+            if not valid_texts.empty:
                 analysis_results = []
                 for text in valid_texts:
                     ai_result = sentiment_analyzer(text)[0]
@@ -69,47 +88,42 @@ def live_dashboard_view():
                     })
                 
                 df_sentiment = pd.DataFrame(analysis_results)
-                col1, col2 = st.columns([1, 1])
-                with col1:
-                    sentiment_counts = df_sentiment['Sentiment'].value_counts()
-                    st.bar_chart(sentiment_counts, color="#4F8BF9")
-                with col2:
-                    st.metric("Total Responses", len(df_sentiment))
-                    if "POSITIVE" in sentiment_counts:
-                        pct = (sentiment_counts["POSITIVE"] / len(df_sentiment)) * 100
-                        st.metric("Positive Rate", f"{pct:.1f}%")
                 
-                st.dataframe(df_sentiment, use_container_width=True, hide_index=True)
+                with chart_placeholder.container():
+                    col1, col2 = st.columns([1, 1])
+                    sentiment_counts = df_sentiment['Sentiment'].value_counts()
+                    col1.bar_chart(sentiment_counts, color="#4F8BF9")
+                    col2.metric("Total Analyzed", len(df_sentiment))
+                
+                with table_placeholder.container():
+                    st.dataframe(df_sentiment, use_container_width=True, hide_index=True, key="sent_table_smooth")
 
-    # TAB 2: QUANTITATIVE
+    # --- TAB 2: QUANTITATIVE (Smooth) ---
     with tab2:
-        st.header("Quantitative Data")
-        if not quant_questions:
-            st.info("No multiple choice or rating questions available.")
-        else:
-            target_quant_q = st.selectbox("Select question to visualize:", quant_questions, key="quant_q")
+        if quant_questions:
+            target_quant_q = st.selectbox("Select question to visualize:", quant_questions, key="quant_q_static")
+            quant_placeholder = st.empty()
+            
             if target_quant_q in df_all.columns:
                 quant_data = df_all[target_quant_q].dropna()
-                val_counts = quant_data.value_counts().sort_index()
-                st.bar_chart(val_counts, color="#FF4B4B")
-                st.dataframe(val_counts.reset_index(name="Votes"), hide_index=True)
+                with quant_placeholder.container():
+                    val_counts = quant_data.value_counts().sort_index()
+                    st.bar_chart(val_counts, color="#FF4B4B")
+                    st.dataframe(val_counts.reset_index(name="Votes"), hide_index=True, key="quant_table_smooth")
 
-    # TAB 3: DEMOGRAPHICS
+    # --- TAB 3: DEMOGRAPHICS (Smooth) ---
     with tab3:
-        st.header("Commuter Profile")
-        if not demo_questions:
-            st.info("No demographic questions created.")
-        else:
-            df_demo = df_all[demo_questions].dropna(how="all")
-            st.dataframe(df_demo, use_container_width=True, hide_index=True)
-            
-            st.divider()
-            st.subheader("Demographic Breakdown")
-            # Create a simple grid for demographic charts
-            for demo_q in demo_questions:
-                st.write(f"**{demo_q}**")
-                counts = df_demo[demo_q].value_counts()
-                st.bar_chart(counts, height=200)
+        if demo_questions:
+            demo_placeholder = st.empty()
+            with demo_placeholder.container():
+                df_demo = df_all[demo_questions].dropna(how="all")
+                st.dataframe(df_demo, use_container_width=True, hide_index=True, key="demo_table_smooth")
+                
+                st.divider()
+                # Draw small charts for demographics
+                for demo_q in demo_questions:
+                    st.caption(f"**{demo_q}**")
+                    st.bar_chart(df_demo[demo_q].value_counts(), height=150)
 
-# --- 3. RUN THE VIEW ---
+# Run the smooth view
 live_dashboard_view()
