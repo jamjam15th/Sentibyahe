@@ -4,3 +4,4 @@ supabase
 pandas
 transformers
 torch
+tiktoken
