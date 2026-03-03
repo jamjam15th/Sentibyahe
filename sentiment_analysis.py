@@ -1,6 +1,5 @@
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
-import torch
 
 st.set_page_config(page_title="Thesis: Sentiment Analysis", page_icon="📊")
 st.title("📊 Multilingual Sentiment Analysis")
@@ -10,20 +9,17 @@ conn = st.connection("supabase", type=SupabaseConnection)
 
 @st.cache_resource 
 def load_sentiment_model():
-    # Lazy import to prevent the error from crashing other pages
-    from transformers import pipeline, AutoTokenizer
+    # standard top-level style import inside the function
+    import transformers
+    import torch
     
     model_path = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
     
-    # Explicitly load tokenizer to avoid tiktoken/file errors
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    
-    return pipeline(
+    # We use the full path to the pipeline to avoid the naming conflict
+    return transformers.pipeline(
         "sentiment-analysis", 
         model=model_path, 
-        tokenizer=tokenizer,
-        # Use CPU (-1) for stability on Streamlit Cloud unless GPU is verified
-        device=-1 if not torch.cuda.is_available() else 0
+        device=-1
     )
 
 with st.spinner("Loading AI model..."):
