@@ -21,8 +21,7 @@ with tab1:
                 st.session_state.logged_in = True
                 st.session_state.user_email = auth.user.email
                 
-                # --- NEW: EXTRACT NAMES FROM SUPABASE ---
-                # Safely get the metadata dictionary (defaults to empty if none exists)
+                # EXTRACT NAMES FROM SUPABASE
                 metadata = auth.user.user_metadata or {}
                 st.session_state.first_name = metadata.get("first_name", "Admin")
                 st.session_state.last_name = metadata.get("last_name", "")
@@ -36,7 +35,6 @@ with tab1:
 with tab2:
     st.header("Create Account")
     
-    # --- NEW: ADD NAME FIELDS TO UI ---
     col1, col2 = st.columns(2)
     with col1:
         new_first_name = st.text_input("First Name", key="signup_fname")
@@ -45,13 +43,22 @@ with tab2:
         
     new_email = st.text_input("Email", key="signup_email")
     new_password = st.text_input("Password", type="password", key="signup_pass")
+    
+    # --- NEW: CONFIRM PASSWORD FIELD ---
+    confirm_password = st.text_input("Confirm Password", type="password", key="signup_pass_confirm")
 
     if st.button("Sign Up"):
+        # 1. Check if names are empty
         if not new_first_name or not new_last_name:
             st.warning("⚠️ Please enter your first and last name.")
+        
+        # 2. Check if passwords match!
+        elif new_password != confirm_password:
+            st.error("❌ Passwords do not match. Please try again.")
+            
+        # 3. If everything is good, proceed with Supabase signup
         else:
             try:
-                # --- NEW: PACK NAMES INTO METADATA ---
                 sign_up_data = {
                     "email": new_email, 
                     "password": new_password,
@@ -63,10 +70,8 @@ with tab2:
                     }
                 }
                 
-                # 1. Register the user in Supabase with their names
                 response = conn.client.auth.sign_up(sign_up_data)
                 
-                # 2. Check if user was created
                 if response.user:
                     st.success("Account created! 📧 Please check your email and click the confirmation link before logging in.")
                     st.info("Note: If you don't see the email, check your Spam folder.")
