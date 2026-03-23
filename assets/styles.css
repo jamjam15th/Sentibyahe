@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Mulish:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --gold:   rgb(255, 197, 112);
+  --sand:   rgb(239, 210, 176);
+  --steel:  rgb(84, 119, 146);
+  --navy:   rgb(26, 50, 99);
+  --navydk: rgb(18, 34, 68);
+  --white:  #ffffff;
+  --off:    #f7f6f2;
+  --muted:  rgb(120, 148, 172);
+  --bdr:    rgba(84,119,146,0.22);
+}
+
+.block-container {
+  padding: 5rem 0rem 0rem 0rem !important;  
+}
