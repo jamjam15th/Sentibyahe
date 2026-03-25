@@ -60,7 +60,7 @@ st.markdown("""
         font-size: 1rem; 
     }
 
-    /* 🌟 LINK CARD (Matches your screenshot) 🌟 */
+    /* 🌟 LINK CARD 🌟 */
     .custom-link-card {
         background-color: #f0f4f8;
         border: 1px solid #dde3ef;
@@ -73,6 +73,25 @@ st.markdown("""
     .custom-link-url { font-size: 1rem; color: #1a5276; font-weight: 500; text-decoration: none; word-break: break-all; }
     .custom-link-url:hover { text-decoration: underline; }
     .custom-link-hint { font-size: 0.8rem; color: #7c8db5; margin-top: 6px; }
+
+    /* 📱 RESPONSIVE MEDIA QUERIES 📱 */
+    @media screen and (max-width: 768px) {
+        .premium-header {
+            padding: 1.5rem 1.2rem !important;
+        }
+        .premium-header h1 {
+            font-size: 1.6rem !important;
+        }
+        .premium-header p {
+            font-size: 0.9rem !important;
+        }
+        .custom-link-card {
+            padding: 0.8rem 1rem !important;
+        }
+        .custom-link-url {
+            font-size: 0.85rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -177,62 +196,59 @@ questions = fetch_questions()
 # ADD NEW QUESTION
 # ══════════════════════════════════════════
 if not st.session_state.preview_mode:
-    st.markdown("""<div style="background:#fff;border:1px solid var(--bdr);border-radius:8px;padding:1.5rem;margin-bottom:1rem;">
-        <h4 style="color:var(--navy);margin-top:0;font-family:'Mulish';font-weight:700;">➕ Add Question</h4>""",
-        unsafe_allow_html=True)
+    with st.expander("➕ Add Question", expanded=True): 
 
-    c1, c2 = st.columns([3, 2])
-    with c1:
-        new_prompt = st.text_input("Question text", placeholder="e.g. How was the driver's behavior?")
-    with c2:
-        q_type = st.selectbox("Question type", ["Short Answer", "Paragraph", "Multiple Choice", "Rating (Likert)"])
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            new_prompt = st.text_input("Question text", placeholder="e.g. How was the driver's behavior?")
+        with c2:
+            q_type = st.selectbox("Question type", ["Short Answer", "Paragraph", "Multiple Choice", "Rating (Likert)"])
 
-    new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
+        new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
 
-    if q_type == "Multiple Choice":
-        opts_raw = st.text_input("Options (comma-separated)", placeholder="e.g. Mabuti, Okay, Masama")
-        if opts_raw:
-            new_options = [o.strip() for o in opts_raw.split(",")]
+        if q_type == "Multiple Choice":
+            opts_raw = st.text_input("Options (comma-separated)", placeholder="e.g. Mabuti, Okay, Masama")
+            if opts_raw:
+                new_options = [o.strip() for o in opts_raw.split(",")]
 
-    if q_type == "Rating (Likert)":
-        st.markdown("**Likert Scale Settings**")
-        sc1, sc2, sc3 = st.columns([1, 2, 2])
-        with sc1:
-            new_scale_max = st.number_input("Points (max)", min_value=2, max_value=10, value=5, step=1)
-        with sc2:
-            new_scale_label_low = st.text_input("Label for 1 (lowest)", placeholder="e.g. Strongly Disagree")
-        with sc3:
-            new_scale_label_high = st.text_input(f"Label for {int(new_scale_max)} (highest)", placeholder="e.g. Strongly Agree")
+        if q_type == "Rating (Likert)":
+            st.markdown("**Likert Scale Settings**")
+            sc1, sc2, sc3 = st.columns([1, 2, 2])
+            with sc1:
+                new_scale_max = st.number_input("Points (max)", min_value=2, max_value=10, value=5, step=1)
+            with sc2:
+                new_scale_label_low = st.text_input("Label for 1 (lowest)", placeholder="e.g. Strongly Disagree")
+            with sc3:
+                new_scale_label_high = st.text_input(f"Label for {int(new_scale_max)} (highest)", placeholder="e.g. Strongly Agree")
 
-    c3, c4 = st.columns(2)
-    with c3:
-        selected_dim = st.selectbox("SERVQUAL dimension", ["None"] + DIM_KEYS)
-        servqual_dim = None if selected_dim == "None" else selected_dim
-    with c4:
-        st.markdown("<div style='margin-top:2rem'></div>", unsafe_allow_html=True)
-        is_required    = st.checkbox("* Mark as required", value=True)
+        c3, c4 = st.columns(2)
+        with c3:
+            selected_dim = st.selectbox("SERVQUAL dimension", ["None"] + DIM_KEYS)
+            servqual_dim = None if selected_dim == "None" else selected_dim
+        with c4:
+            st.markdown("<div style='margin-top:2rem'></div>", unsafe_allow_html=True)
+            is_required    = st.checkbox("* Mark as required", value=True)
 
-    st.markdown("<div style='margin-top:.5rem'></div>", unsafe_allow_html=True)
-    if st.button("Add Question", use_container_width=True, type="primary"):
-        if new_prompt.strip():
-            max_order = max((q.get("sort_order") or 0 for q in questions), default=0)
-            payload = {
-                "admin_email": admin_email, "public_id": public_id,
-                "prompt": new_prompt.strip(), "q_type": q_type,
-                "options": new_options, "is_required": is_required,
-                "is_demographic": False, 
-                "servqual_dimension": servqual_dim,
-                "sort_order": max_order + 1,
-            }
-            if q_type == "Rating (Likert)":
-                payload["scale_max"]        = int(new_scale_max)
-                payload["scale_label_low"]  = new_scale_label_low.strip() or None
-                payload["scale_label_high"] = new_scale_label_high.strip() or None
-            conn.client.table("form_questions").insert(payload).execute()
-            st.rerun()
-        else:
-            st.warning("⚠️ Please enter a question first.")
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:.5rem'></div>", unsafe_allow_html=True)
+        if st.button("Add Question", use_container_width=True, type="primary"):
+            if new_prompt.strip():
+                max_order = max((q.get("sort_order") or 0 for q in questions), default=0)
+                payload = {
+                    "admin_email": admin_email, "public_id": public_id,
+                    "prompt": new_prompt.strip(), "q_type": q_type,
+                    "options": new_options, "is_required": is_required,
+                    "is_demographic": False, 
+                    "servqual_dimension": servqual_dim,
+                    "sort_order": max_order + 1,
+                }
+                if q_type == "Rating (Likert)":
+                    payload["scale_max"]        = int(new_scale_max)
+                    payload["scale_label_low"]  = new_scale_label_low.strip() or None
+                    payload["scale_label_high"] = new_scale_label_high.strip() or None
+                conn.client.table("form_questions").insert(payload).execute()
+                st.rerun()
+            else:
+                st.warning("⚠️ Please enter a question first.")
 
     with st.expander("ℹ️ What is SERVQUAL?"):
         render_dimension_cards()
@@ -325,8 +341,9 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False):
         boxes = ""
         for i in range(1, scale_max + 1):
             lbl = label_low if i == 1 and label_low else (label_high if i == scale_max and label_high else "&nbsp;")
-            boxes += f'<div style="display:flex;flex-direction:column;flex:1;align-items:center;"><div style="width:100%;padding:12px 0;border:1px solid #dde3ef;border-radius:4px;display:flex;justify-content:center;font-size:13px;color:#3b5bdb;font-weight:500;">{i}</div><div style="font-size:11px;color:#7c8db5;margin-top:5px;text-align:center;min-height:15px;font-weight:600;">{lbl}</div></div>'
-        return f'<div style="display:flex;gap:10px;margin-top:10px;width:100%; max-width:600px;">{boxes}</div>'
+            boxes += f'<div style="display:flex;flex-direction:column;flex:1;min-width:40px;align-items:center;"><div style="width:100%;padding:12px 0;border:1px solid #dde3ef;border-radius:4px;display:flex;justify-content:center;font-size:13px;color:#3b5bdb;font-weight:500;">{i}</div><div style="font-size:11px;color:#7c8db5;margin-top:5px;text-align:center;min-height:15px;font-weight:600;">{lbl}</div></div>'
+        # Added flex-wrap here for mobile responsiveness!
+        return f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;width:100%; max-width:600px;">{boxes}</div>'
 
     display_num = q_num_label if q_num_label is not None else f"Q{idx + 1}"
     prompt   = q["prompt"].replace("<", "&lt;").replace(">", "&gt;")

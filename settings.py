@@ -49,6 +49,32 @@ button[kind="primary"] {
     background-color: var(--danger) !important;
     color: white !important;
     border: none !important;
+    width: 100% !important; /* Full width for mobile-friendly tapping */
+}
+
+/* 📱 RESPONSIVE MOBILE FIXES 📱 */
+@media screen and (max-width: 768px) {
+    .premium-header {
+        padding: 1.5rem 1.2rem !important;
+        margin-bottom: 1.2rem !important;
+    }
+    .premium-header h1 {
+        font-size: 1.6rem !important;
+    }
+    .premium-header p {
+        font-size: 0.85rem !important;
+    }
+    
+    /* Responsive Tabs for Settings */
+    [data-testid="stTabs"] [role="tablist"] {
+        overflow-x: auto;
+        flex-wrap: nowrap !important;
+        scrollbar-width: none;
+    }
+    [data-testid="stTabs"] [role="tab"] {
+        font-size: 0.8rem !important;
+        white-space: nowrap;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -65,8 +91,10 @@ if not admin_email:
 
 st.markdown("""
 <div class="premium-header">
-    <h1>System Settings</h1>
-    <p>Manage your researcher profile and AI model configurations.</p>
+    <div>
+        <h1>System Settings</h1>
+        <p>Manage your researcher profile and AI model configurations.</p>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -77,11 +105,12 @@ tab1, tab2, tab3 = st.tabs(["👤 Profile & Security", "🧠 AI Model Config", "
 
 # ── TAB 1: PROFILE & SECURITY ──
 with tab1:
+    # On mobile, Streamlit automatically turns this into 1 column
     c1, c2 = st.columns(2)
     
     with c1:
         st.markdown("### 👤 Profile Details")
-        st.text_input("Account Email (Cannot be changed)", value=admin_email, disabled=True)
+        st.text_input("Account Email", value=admin_email, disabled=True)
         
         current_name = st.session_state.get("user_name", "")
         new_name = st.text_input("Full Name", value=current_name, placeholder="e.g., Juan Dela Cruz")
@@ -109,19 +138,18 @@ with tab1:
                 if len(new_pw) >= 6:
                     try:
                         conn.client.auth.update_user({"password": new_pw})
-                        st.success("✅ Password updated successfully! Use this on your next login.")
+                        st.success("✅ Password updated!")
                     except Exception as e:
-                        st.error(f"⚠️ Error updating password: {e}")
+                        st.error(f"⚠️ Error: {e}")
                 else:
-                    st.warning("⚠️ Password must be at least 6 characters.")
+                    st.warning("⚠️ Min. 6 characters.")
             elif new_pw != confirm_pw:
                 st.error("⚠️ Passwords do not match.")
                 
-    # ── ACCOUNT DELETION ZONE (NATIVE UI) ──
     st.divider()
     
     st.markdown("<h3 style='color: #b03a2e; margin-top: 0;'>🛑 Delete Account</h3>", unsafe_allow_html=True)
-    st.write("This will permanently delete your account, your survey link, all your questions, and all commuter responses. **This action cannot be undone.**")
+    st.write("This will permanently delete everything. **Action cannot be undone.**")
     
     del_confirm = st.text_input("To confirm, type exactly: **DELETE MY ACCOUNT**")
     
@@ -138,41 +166,41 @@ with tab1:
                     pass 
                 
                 st.session_state.clear()
-                st.success("Account successfully deleted. Goodbye!")
+                st.success("Account deleted.")
                 st.rerun()
             except Exception as e:
-                st.error(f"⚠️ Error deleting account: {e}")
+                st.error(f"⚠️ Error: {e}")
         else:
-            st.error("⚠️ You must type 'DELETE MY ACCOUNT' exactly as shown to confirm.")
+            st.error("⚠️ Confirmation text incorrect.")
 
 # ── TAB 2: AI CONFIGURATION ──
 with tab2:
     st.markdown("### XLM-RoBERTa Model Settings")
-    st.info("These settings allow you to fine-tune how the dashboard interprets the Hugging Face AI results. *(Note: Changes here apply to the dashboard visualization logic)*")
+    st.info("Fine-tune how the dashboard interprets AI results.")
     
     st.markdown("**Confidence Threshold**")
-    st.write("If the AI's confidence score falls below this threshold, should it be flagged as 'Needs Human Review'?")
+    st.write("Flag predictions below this score as 'Needs Review'.")
     
     if "ai_threshold" not in st.session_state:
         st.session_state.ai_threshold = 0.65
         
-    threshold = st.slider("Minimum Confidence Score", min_value=0.0, max_value=1.0, value=st.session_state.ai_threshold, step=0.05)
+    threshold = st.slider("Min Confidence", min_value=0.0, max_value=1.0, value=st.session_state.ai_threshold, step=0.05)
     
     if st.button("💾 Save AI Settings"):
         st.session_state.ai_threshold = threshold
-        st.success(f"✅ AI Threshold updated to {threshold*100:.0f}%!")
+        st.success(f"✅ Threshold set to {threshold*100:.0f}%!")
 
-# ── TAB 3: DATA MANAGEMENT (THESIS CRITICAL) ──
+# ── TAB 3: DATA MANAGEMENT ──
 with tab3:
     st.markdown("### Export Dataset")
-    st.write("Download all commuter responses as a clean CSV file for your Chapters 4 & 5 data analysis.")
+    st.write("Download response data for your Chapters 4 & 5 analysis.")
     
     try:
         res = conn.client.table("form_responses").select("*").eq("admin_email", admin_email).execute()
         responses = res.data or []
         
         if not responses:
-            st.warning("No data available to export yet.")
+            st.warning("No data yet.")
         else:
             flat_data = []
             for r in responses:
@@ -184,27 +212,26 @@ with tab3:
             csv_data = df_export.to_csv(index=False).encode('utf-8')
             
             st.download_button(
-                label="📥 Download Complete Dataset (CSV)",
+                label="📥 Download Dataset (CSV)",
                 data=csv_data,
-                file_name="thesis_puv_dataset.csv",
+                file_name="thesis_dataset.csv",
                 mime="text/csv",
+                use_container_width=True
             )
-            st.caption(f"Ready to export {len(df_export)} total responses.")
             
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Error: {e}")
 
-    # ── WIPE DATA ZONE (NATIVE UI) ──
     st.divider()
     
-    st.markdown("<h3 style='color: #b03a2e; margin-top: 0;'>⚠️ Wipe Commuter Data</h3>", unsafe_allow_html=True)
-    st.write("This will permanently delete **all commuter responses** from your live database, but keep your questions intact. Useful for clearing out test data before your final defense.")
+    st.markdown("<h3 style='color: #b03a2e; margin-top: 0;'>⚠️ Wipe Data</h3>", unsafe_allow_html=True)
+    st.write("Delete all responses but keep questions. Useful for resetting test data.")
     
-    wipe_confirm = st.checkbox("I understand that this action cannot be undone.", key="wipe_checkbox")
+    wipe_confirm = st.checkbox("I understand this is permanent.", key="wipe_checkbox")
     if st.button("🗑️ Wipe All Survey Responses", disabled=not wipe_confirm, type="primary"):
         try:
             conn.client.table("form_responses").delete().eq("admin_email", admin_email).execute()
-            st.success("✅ All survey responses have been wiped clean. Your dashboard is now reset to 0.")
+            st.success("✅ Data wiped clean.")
             st.balloons()
         except Exception as e:
-            st.error(f"Failed to wipe data: {e}")
+            st.error(f"Failed: {e}")

@@ -99,7 +99,6 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     transition: all 0.15s ease !important;
     position: relative !important;
 }
-/* Aggressively hide the radio circle for horizontal only */
 [data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child {
     display: none !important;
     width: 0 !important;
@@ -108,13 +107,8 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     position: absolute !important;
     pointer-events: none !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child > div {
-    display: none !important;
-}
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child input {
-    display: none !important;
-}
-/* Number text */
+[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child > div { display: none !important; }
+[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child input { display: none !important; }
 [data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label p {
     color: #3b5bdb !important;
     font-weight: 600 !important;
@@ -124,12 +118,10 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     text-align: center !important;
     line-height: 1 !important;
 }
-/* Hover */
 [data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label:hover {
     border-color: #3b5bdb !important;
     background: #f5f7ff !important;
 }
-/* Selected */
 [data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label:has(input:checked) {
     border-color: #3b5bdb !important;
     background: #eef1ff !important;
@@ -156,7 +148,7 @@ div.stFormSubmitButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# ── JS: forcibly hide radio circles on horizontal Likert on every re-render ──
+# ── JS: forcibly hide radio circles ──
 st.markdown("""
 <script>
 (function() {
@@ -174,15 +166,9 @@ st.markdown("""
             ].join(';');
         });
     };
-
-    // Run immediately
     hideRadioCircles();
-
-    // Run after DOM settles
     setTimeout(hideRadioCircles, 100);
     setTimeout(hideRadioCircles, 500);
-
-    // Watch for Streamlit re-renders
     const observer = new MutationObserver(() => hideRadioCircles());
     observer.observe(document.body, { childList: true, subtree: true });
 })();
@@ -236,6 +222,7 @@ st.markdown(f"""
 
 # ── 4. FORM ──
 if len(form_schema) > 0:
+    question_map = {} 
     with st.form("public_survey_form", clear_on_submit=True):
         user_answers = {}
         for i, q in enumerate(form_schema):
@@ -243,12 +230,13 @@ if len(form_schema) > 0:
             req_star = '<span style="color:#d63031;">*</span>' if is_req else ""
             key = f"ans_{q.get('id', f'demo_{i}')}"
 
-            # ⭐️ THE DUPLICATE PROMPT FIX: Appends (1), (2) if the name is taken ⭐️
             unique_prompt = prompt
             counter = 1
             while unique_prompt in user_answers:
                 unique_prompt = f"{prompt} ({counter})"
                 counter += 1
+            
+            question_map[unique_prompt] = q
 
             q_badge = {
                 "Short Answer":     "✏️ Short Answer",
@@ -279,33 +267,16 @@ if len(form_schema) > 0:
                 """, unsafe_allow_html=True)
 
                 if q_type == "Short Answer":
-                    user_answers[unique_prompt] = st.text_input(
-                        prompt, key=key, placeholder="Your answer", label_visibility="collapsed"
-                    )
-
+                    user_answers[unique_prompt] = st.text_input(prompt, key=key, placeholder="Your answer", label_visibility="collapsed")
                 elif q_type == "Paragraph":
-                    user_answers[unique_prompt] = st.text_area(
-                        prompt, key=key, placeholder="Your answer", label_visibility="collapsed"
-                    )
-
+                    user_answers[unique_prompt] = st.text_area(prompt, key=key, placeholder="Your answer", label_visibility="collapsed")
                 elif q_type == "Multiple Choice":
-                    user_answers[unique_prompt] = st.radio(
-                        prompt, q.get("options", []), key=key, label_visibility="collapsed"
-                    )
-
+                    user_answers[unique_prompt] = st.radio(prompt, q.get("options", []), key=key, label_visibility="collapsed")
                 elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                     scale_max = int(q.get("scale_max") or 5)
                     lbl_low  = q.get("scale_label_low", "")
                     lbl_high = q.get("scale_label_high", "")
-
-                    user_answers[unique_prompt] = st.radio(
-                        prompt,
-                        [str(x) for x in range(1, scale_max + 1)],
-                        key=key,
-                        horizontal=True,
-                        label_visibility="collapsed"
-                    )
-
+                    user_answers[unique_prompt] = st.radio(prompt, [str(x) for x in range(1, scale_max + 1)], key=key, horizontal=True, label_visibility="collapsed")
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;margin-top:0.4rem;padding:0 0.25rem;">
                       <span style="font-size:11px;color:#7c8db5;font-weight:600;">{lbl_low}</span>
@@ -315,11 +286,38 @@ if len(form_schema) > 0:
 
         if st.form_submit_button("Submit Response →", type="primary"):
             try:
+                demo_answers = {}
+                raw_feedback_list = []
+                dim_scores = { "Tangibles": [], "Reliability": [], "Responsiveness": [], "Assurance": [], "Empathy": [] }
+
+                for uprompt, ans in user_answers.items():
+                    if not ans: continue 
+                    
+                    q_info = question_map[uprompt]
+                    dim = q_info.get("servqual_dimension")
+                    q_type = q_info.get("q_type")
+
+                    if dim == "Commuter Profile":
+                        demo_answers[q_info["prompt"]] = ans
+                    elif q_type in ("Rating (Likert)", "Rating (1-5)") and dim in dim_scores:
+                        dim_scores[dim].append(int(ans))
+                    elif q_type in ("Short Answer", "Paragraph"):
+                        raw_feedback_list.append(str(ans))
+
                 payload = {
                     "public_id": target_form_id,
                     "admin_email": form_meta.get("admin_email", ""),
-                    "answers": user_answers
+                    "answers": user_answers,
+                    "demo_answers": demo_answers,
+                    "raw_feedback": " | ".join(raw_feedback_list) if raw_feedback_list else None,
+                    "sentiment_status": "pending",
+                    "tangibles_avg": sum(dim_scores["Tangibles"])/len(dim_scores["Tangibles"]) if dim_scores["Tangibles"] else None,
+                    "reliability_avg": sum(dim_scores["Reliability"])/len(dim_scores["Reliability"]) if dim_scores["Reliability"] else None,
+                    "responsiveness_avg": sum(dim_scores["Responsiveness"])/len(dim_scores["Responsiveness"]) if dim_scores["Responsiveness"] else None,
+                    "assurance_avg": sum(dim_scores["Assurance"])/len(dim_scores["Assurance"]) if dim_scores["Assurance"] else None,
+                    "empathy_avg": sum(dim_scores["Empathy"])/len(dim_scores["Empathy"]) if dim_scores["Empathy"] else None,
                 }
+                
                 conn.client.table("form_responses").insert(payload).execute()
                 
                 st.success("🎉 Response submitted successfully!")

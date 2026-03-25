@@ -28,7 +28,8 @@ def inject_css():
 html, body, p, div, span, a, button, label, input, textarea, select { font-family: 'Mulish', sans-serif !important; }
 [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--off) !important; }
 .block-container { max-width: 860px !important; padding: 2rem 1.2rem 5rem !important; }
-#MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] { display: none !important; }
+#MainMenu, footer, [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"] { display: none !important; }
 
 /* ── HEADER ── */
 .gf-header {
