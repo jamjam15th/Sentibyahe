@@ -184,37 +184,8 @@ def handle_login_form():
                 safe_token = token_bytes.decode("utf-8")
 
                 # 4. Push the single "code" to the URL
-                st.query_params.clear() # Clear any old params first
+                st.query_params.clear()
                 st.query_params["session"] = safe_token
-
-                st.rerun() 
-        except Exception as e:
-            st.error(f"❌ Login failed: {e}")
-
-    st.html('<div style="text-align:center;margin-top:.3rem;font-size:1rem;color:var(--muted);">Don\'t have an account? <a href="?tab=signup" style="color:var(--steel);font-weight:700;text-decoration:none;">Create one</a></div>')
-    email = st.text_input("Email address", key="login_email", placeholder="you@example.com")
-    password = st.text_input("Password", key="login_pass", placeholder="Enter your password", type="password")
-
-    if st.button("Sign In →", key="btn_login"):
-        if not email or not password:
-            st.warning("⚠️ Please fill in all fields.")
-            return
-        try:
-            auth = conn.client.auth.sign_in_with_password({"email": email, "password": password})
-            if auth.user:
-                metadata = auth.user.user_metadata or {}
-                
-                # 1. Setup session state
-                st.session_state.logged_in = True
-                st.session_state.user_email = auth.user.email
-                st.session_state.first_name = metadata.get("first_name", "Admin")
-                st.session_state.last_name  = metadata.get("last_name", "")
-
-                # 2. Append URL parameters to survive a browser refresh
-                st.query_params["logged_in"] = "true"
-                st.query_params["email"] = auth.user.email
-                st.query_params["fname"] = st.session_state.first_name
-                st.query_params["lname"] = st.session_state.last_name
 
                 st.rerun() 
         except Exception as e:
