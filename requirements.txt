@@ -6,3 +6,4 @@ torch --index-url https://download.pytorch.org/whl/cpu
 tiktoken
 sentencepiece
 protobuf
+streamlit-extras
