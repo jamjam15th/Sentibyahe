@@ -179,7 +179,7 @@ elif st.session_state.get("logged_in"):
 
         st.divider()
 
-        if st.button("🚪Logout", use_container_width=True):
+        if st.button(" hehesdfsdf", use_container_width=True):
             try:
                 conn.client.auth.sign_out()
             except: pass
