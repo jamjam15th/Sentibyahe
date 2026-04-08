@@ -2,6 +2,7 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 import base64
 import json 
+import extra_streamlit_components as stx
 
 # ── 1. Init ──
 conn = st.connection("supabase", type=SupabaseConnection)
@@ -189,8 +190,6 @@ def is_session_expired():
 
     return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
-
-import extra_streamlit_components as stx
 
 # ── Cookie Manager (dapat sa labas ng function, top-level) ──
 @st.cache_resource
