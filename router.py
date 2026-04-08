@@ -122,9 +122,11 @@ SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
 import uuid
 
 def set_session(user):
+    import uuid
     session_id = str(uuid.uuid4())
 
     st.session_state.logged_in = True
+    st.session_state.local_login = True  # ⭐️ THIS WAS MISSING
     st.session_state.session_id = session_id
     st.session_state.user_email = user.email or ""
 
@@ -134,7 +136,6 @@ def set_session(user):
 
     st.session_state.login_time = datetime.now(timezone.utc)
 
-    # 🔥 Save session in DB (overwrite previous)
     conn.client.table("active_sessions").upsert({
         "user_email": st.session_state.user_email,
         "session_id": session_id
@@ -191,8 +192,7 @@ try:
     session = conn.client.auth.get_session()
 
     # ✅ CASE 1: First login (allow Supabase session)
-    if session and session.user and not st.session_state.local_login:
-        set_session(session.user)
+    pass
 
     if st.session_state.get("logged_in", False):
 
