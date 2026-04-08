@@ -191,34 +191,52 @@ if "logged_in" not in st.session_state:
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
 
-# ── AUTH CHECK ──
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if "local_login" not in st.session_state:
-    st.session_state.local_login = False
-
 try:
     if st.session_state.get("logged_in", False):
-        # Single-device check
+        # Already logged in — validate session
         if not is_valid_session():
             clear_session()
             st.warning("Naka-login na ang account mo sa ibang device.")
             st.rerun()
 
-        # Timeout check
         if is_session_expired():
             clear_session()
             st.warning("Session expired. Please log in again.")
             st.rerun()
 
-        # ✅ Reset timer on every interaction
         st.session_state.login_time = datetime.now(timezone.utc)
 
     else:
-        # ✅ Never auto-restore from Supabase — require explicit login
-        st.session_state.logged_in = False
-        st.session_state.local_login = False
+        # ✅ Try to restore session from Supabase after browser refresh
+        supabase_session = conn.client.auth.get_session()
+
+        if supabase_session and supabase_session.user:
+            user = supabase_session.user
+
+            # Check kung may active session pa sa DB para sa user na ito
+            res = conn.client.table("active_sessions") \
+                .select("session_id") \
+                .eq("user_email", user.email) \
+                .limit(1) \
+                .execute()
+
+            if res.data:
+                # ✅ May active session pa — i-restore
+                metadata = user.user_metadata or {}
+                st.session_state.logged_in = True
+                st.session_state.local_login = True
+                st.session_state.session_id = res.data[0]["session_id"]
+                st.session_state.user_email = user.email
+                st.session_state.first_name = metadata.get("first_name", "Admin")
+                st.session_state.last_name  = metadata.get("last_name", "")
+                st.session_state.login_time = datetime.now(timezone.utc)
+            else:
+                # Walang active session sa DB — force login
+                st.session_state.logged_in = False
+                st.session_state.local_login = False
+        else:
+            st.session_state.logged_in = False
+            st.session_state.local_login = False
 
 except Exception:
     st.session_state.logged_in = False
