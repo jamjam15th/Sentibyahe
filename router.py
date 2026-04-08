@@ -217,6 +217,25 @@ if not st.session_state.get("logged_in", False):
 
 try:
     if st.session_state.get("logged_in", False):
+        if not is_valid_session():
+            clear_session()
+            st.warning("Naka-login na ang account mo sa ibang device.")
+            st.rerun()
+
+        if is_session_expired():
+            clear_session()
+            st.warning("Session expired. Please log in again.")
+            st.rerun()
+
+        st.session_state.login_time = datetime.now(timezone.utc)
+
+    else:
+        st.session_state.logged_in   = False
+        st.session_state.local_login = False
+
+except Exception:
+    st.session_state.logged_in   = False
+    st.session_state.local_login = False
 
 # ── 5. Pages ──
 login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
