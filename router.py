@@ -2,6 +2,7 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 import base64
 import json 
+import streamlit.components.v1 as components
 
 # ── 1. Init ──
 conn = st.connection("supabase", type=SupabaseConnection)
@@ -93,14 +94,11 @@ footer                         { display: none !important; }
 """, unsafe_allow_html=True)
 
 # ── 4. SECURE SESSION RESOLUTION (Cross-Device Fix) ──
-# We disable the "auto-sync" and only allow login if a specific 
-# session token exists for THIS browser window.
-
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 try:
-    # 1. Check if the URL has a fresh login token (just logged in)
+    # 1. First Priority: Check URL token (Fresh login redirect)
     if "session" in st.query_params:
         token_str = st.query_params["session"]
         padded_token = token_str + "=" * ((4 - len(token_str) % 4) % 4)
@@ -111,13 +109,12 @@ try:
         st.session_state.first_name = user_data.get("f", "Admin")
         st.session_state.last_name  = user_data.get("l", "")
         
-        # Clean the URL so the session isn't bookmarked/shared
+        # CLEAR URL so it can't be copied to other devices
         st.query_params.clear()
 
-    # 2. Otherwise, check if Supabase has a VALID user for THIS specific browser
+    # 2. Second Priority: Strict Server-Side Validation
     else:
-        # We use 'get_user' instead of 'get_session' because get_user 
-        # is a server-side check that is more secure.
+        # Check if the Supabase Server actually recognizes a user for this browser
         user_res = conn.client.auth.get_user()
         if user_res and user_res.user:
             st.session_state.logged_in = True
@@ -126,6 +123,7 @@ try:
             st.session_state.first_name = metadata.get("full_name", metadata.get("first_name", "Admin"))
             st.session_state.last_name = metadata.get("last_name", "")
         else:
+            # If server says NO, ensure session state is false
             st.session_state.logged_in = False
             
 except Exception:
@@ -159,7 +157,6 @@ elif st.session_state.get("logged_in"):
         </div>
         """)
 
-        # Display CURRENT user info directly from validated session state
         f_name = st.session_state.get("first_name", "Admin")
         l_name = st.session_state.get("last_name", "")
         u_email = st.session_state.get("user_email", "")
@@ -179,12 +176,23 @@ elif st.session_state.get("logged_in"):
 
         st.divider()
 
-        if st.button(" hehesdfsdf", use_container_width=True):
+        if st.button("🚪 Hard Logout", use_container_width=True):
             try:
-                conn.client.auth.sign_out()
+                # Sign out with 'global' scope to invalidate session on all tabs
+                conn.client.auth.sign_out(scope='global')
             except: pass
+            
             st.query_params.clear()
             st.session_state.clear()
+            
+            # JavaScript Nuke: Force the browser to forget everything immediately
+            components.html("""
+                <script>
+                    window.localStorage.clear();
+                    window.sessionStorage.clear();
+                    window.parent.location.reload();
+                </script>
+            """, height=0)
             st.rerun()
 
         st.html("""
