@@ -1,7 +1,5 @@
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
-import base64
-import json 
 
 # ── 1. Init ──
 conn = st.connection("supabase", type=SupabaseConnection)
@@ -166,13 +164,6 @@ def clear_session():
     except Exception:
         pass
 
-    # ✅ Delete cookies
-    try:
-        cookie_manager.delete("puv_session_id")
-        cookie_manager.delete("puv_user_email")
-    except Exception:
-        pass
-
     st.session_state.clear()
 
     try:
@@ -189,9 +180,6 @@ def is_session_expired():
 
     return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
-
-cookie_manager = stx.CookieManager(key="puv_cookie_manager")
-st.session_state["_cookie_manager"] = cookie_manager  # ← idagdag ito
 
 # ✅ Palitan ng ganito ang AUTH CHECK:
 if "logged_in" not in st.session_state:
