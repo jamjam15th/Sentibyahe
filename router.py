@@ -115,39 +115,66 @@ footer                         { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 4. INSTANT URL AUTH RESOLUTION (DECODING) ──
-if "logged_in" not in st.session_state:
+from datetime import datetime, timedelta, timezone
+
+SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
+
+def set_session(user):
+    st.session_state.logged_in = True
+    st.session_state.user_email = user.email or ""
+
+    metadata = user.user_metadata or {}
+    st.session_state.first_name = metadata.get("first_name", "Admin")
+    st.session_state.last_name  = metadata.get("last_name", "")
+
+    # ⏱️ store login time
+    st.session_state.login_time = datetime.now(timezone.utc)
+
+
+def clear_session():
+    st.session_state.clear()
     try:
-        # First, check if there's a native Supabase session active
-        session = conn.client.auth.get_session()
-        if session and session.user:
-            st.session_state.logged_in = True
-            st.session_state.user_email = session.user.email or ""
-            metadata = session.user.user_metadata or {}
-            st.session_state.first_name = metadata.get("first_name", "Admin")
-            st.session_state.last_name  = metadata.get("last_name", "")
-            
-        # Fallback: Check if the URL has our encoded "session" token
-        elif "session" in st.query_params:
-            # Grab the token and decode it back into a Python dictionary
-            token_str = st.query_params["session"]
-            
-            # Fix any missing padding that URLs sometimes strip
-            padded_token = token_str + "=" * ((4 - len(token_str) % 4) % 4)
-            decoded_bytes = base64.urlsafe_b64decode(padded_token)
-            user_data = json.loads(decoded_bytes.decode("utf-8"))
-            
-            st.session_state.logged_in = True
-            st.session_state.user_email = user_data.get("e", "")
-            st.session_state.first_name = user_data.get("f", "Admin")
-            st.session_state.last_name  = user_data.get("l", "")
-            
-        else:
-            st.session_state.logged_in = False
-            
-    except Exception as e:
-        # If the token is invalid or tampered with, force logout
-        st.session_state.logged_in = False
+        conn.client.auth.sign_out()
+    except Exception:
+        pass
+
+
+def is_session_expired():
+    if "login_time" not in st.session_state:
+        return True
+
+    now = datetime.now(timezone.utc)
+    login_time = st.session_state.login_time
+
+    return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+
+
+# ── AUTH CHECK ──
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+try:
+    session = conn.client.auth.get_session()
+
+    if session and session.user:
+        # First time login or restore session
+        if not st.session_state.logged_in:
+            set_session(session.user)
+
+        # ⏱️ Check expiration
+        if is_session_expired():
+            clear_session()
+            st.warning("Session expired. Please log in again.")
+            st.rerun()
+
+        # 🔄 OPTIONAL: refresh timer on activity
+        st.session_state.login_time = datetime.now(timezone.utc)
+
+    else:
+        clear_session()
+
+except Exception:
+    clear_session()
 
 
 # ── 5. Pages ──
@@ -197,6 +224,8 @@ elif st.session_state.logged_in:
         st.divider()
 
         if st.button("🚪 Logout", use_container_width=True):
+            clear_session()
+            st.rerun()
             # 1. Clear URL Parameters
             st.query_params.clear()
             
