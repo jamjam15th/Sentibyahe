@@ -121,13 +121,13 @@ SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
 
 def set_session(user):
     st.session_state.logged_in = True
+    st.session_state.local_login = True  # ⭐️ IMPORTANT
     st.session_state.user_email = user.email or ""
 
     metadata = user.user_metadata or {}
     st.session_state.first_name = metadata.get("first_name", "Admin")
     st.session_state.last_name  = metadata.get("last_name", "")
 
-    # ⏱️ store login time
     st.session_state.login_time = datetime.now(timezone.utc)
 
 
@@ -136,8 +136,8 @@ def clear_session():
     for key in keys:
         del st.session_state[key]
 
-    # Ensure logged_in exists after clearing
     st.session_state.logged_in = False
+    st.session_state.local_login = False  # ⭐️ IMPORTANT
 
     try:
         conn.client.auth.sign_out()
@@ -160,24 +160,22 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 try:
-    session = conn.client.auth.get_session()
+  session = conn.client.auth.get_session()
 
-    if session and session.user:
-        # First time login or restore session
-        if not st.session_state.logged_in:
-            set_session(session.user)
+  # 🚨 Only trust session if WE created it locally
+  if session and session.user and st.session_state.get("local_login", False):
+      if not st.session_state.logged_in:
+          set_session(session.user)
 
-        # ⏱️ Check expiration
-        if is_session_expired():
-            clear_session()
-            st.warning("Session expired. Please log in again.")
-            st.rerun()
+      if is_session_expired():
+          clear_session()
+          st.warning("Session expired. Please log in again.")
+          st.rerun()
 
-        # 🔄 OPTIONAL: refresh timer on activity
-        st.session_state.login_time = datetime.now(timezone.utc)
+      st.session_state.login_time = datetime.now(timezone.utc)
 
-    else:
-        clear_session()
+  else:
+      clear_session()
 
 except Exception:
     clear_session()
