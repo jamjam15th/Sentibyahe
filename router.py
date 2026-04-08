@@ -188,27 +188,35 @@ if "logged_in" not in st.session_state:
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
 
+# ✅ Restore session on refresh
+if not st.session_state.get("logged_in", False):
+    try:
+        supabase_session = conn.client.auth.get_session()
+        if supabase_session and supabase_session.user:
+            user  = supabase_session.user
+            email = user.email
+
+            res = conn.client.table("active_sessions") \
+                .select("session_id") \
+                .eq("user_email", email) \
+                .limit(1) \
+                .execute()
+
+            if res.data:
+                metadata = user.user_metadata or {}
+                st.session_state.logged_in   = True
+                st.session_state.local_login = True
+                st.session_state.session_id  = res.data[0]["session_id"]
+                st.session_state.user_email  = email
+                st.session_state.first_name  = metadata.get("first_name", "Admin")
+                st.session_state.last_name   = metadata.get("last_name", "")
+                st.session_state.login_time  = datetime.now(timezone.utc)
+                st.rerun()
+    except Exception:
+        pass
+
 try:
     if st.session_state.get("logged_in", False):
-        if not is_valid_session():
-            clear_session()
-            st.warning("Naka-login na ang account mo sa ibang device.")
-            st.rerun()
-
-        if is_session_expired():
-            clear_session()
-            st.warning("Session expired. Please log in again.")
-            st.rerun()
-
-        st.session_state.login_time = datetime.now(timezone.utc)
-
-    else:
-        st.session_state.logged_in   = False
-        st.session_state.local_login = False
-
-except Exception:
-    st.session_state.logged_in   = False
-    st.session_state.local_login = False
 
 # ── 5. Pages ──
 login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
