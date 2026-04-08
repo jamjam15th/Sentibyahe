@@ -181,39 +181,12 @@ def is_session_expired():
     return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
 
-# ✅ Palitan ng ganito ang AUTH CHECK:
+# ── AUTH CHECK ──
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
-
-# ✅ Restore session on refresh via Supabase + active_sessions DB
-if not st.session_state.get("logged_in", False):
-    try:
-        supabase_session = conn.client.auth.get_session()
-        if supabase_session and supabase_session.user:
-            user  = supabase_session.user
-            email = user.email
-
-            res = conn.client.table("active_sessions") \
-                .select("session_id") \
-                .eq("user_email", email) \
-                .limit(1) \
-                .execute()
-
-            if res.data:
-                metadata = user.user_metadata or {}
-                st.session_state.logged_in   = True
-                st.session_state.local_login = True
-                st.session_state.session_id  = res.data[0]["session_id"]
-                st.session_state.user_email  = email
-                st.session_state.first_name  = metadata.get("first_name", "Admin")
-                st.session_state.last_name   = metadata.get("last_name", "")
-                st.session_state.login_time  = datetime.now(timezone.utc)
-                st.rerun()
-    except Exception:
-        pass
 
 try:
     if st.session_state.get("logged_in", False):
