@@ -4,6 +4,7 @@ from streamlit_extras.stylable_container import stylable_container
 import pathlib
 from datetime import datetime, timezone, timedelta
 import uuid
+import hashlib
 
 # ==========================================
 # INITIAL SETUP & STATE
@@ -137,9 +138,16 @@ def handle_login_form():
                 st.session_state.last_name   = metadata.get("last_name", "")
                 st.session_state.login_time  = datetime.now(timezone.utc)
 
+                # ✅ Generate device fingerprint
+                device_id = hashlib.md5(
+                    st.context.headers.get("User-Agent", "unknown").encode()
+                ).hexdigest()
+                st.session_state.device_id = device_id
+
                 conn.client.table("active_sessions").upsert({
                     "user_email": auth.user.email,
                     "session_id": session_id,
+                    "device_id": device_id,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }, on_conflict="user_email").execute()
 
