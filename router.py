@@ -2,7 +2,6 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 import base64
 import json 
-import extra_streamlit_components as stx
 
 # ── 1. Init ──
 conn = st.connection("supabase", type=SupabaseConnection)
@@ -194,53 +193,48 @@ def is_session_expired():
 cookie_manager = stx.CookieManager(key="puv_cookie_manager")
 st.session_state["_cookie_manager"] = cookie_manager  # ← idagdag ito
 
-# ── AUTH CHECK ──
+# ✅ Palitan ng ganito ang AUTH CHECK:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
 
-# ✅ Try to restore from cookie on refresh
+# ✅ Restore session on refresh via Supabase + active_sessions DB
 if not st.session_state.get("logged_in", False):
-    cookie_sid   = cookie_manager.get("puv_session_id")
-    cookie_email = cookie_manager.get("puv_user_email")
+    try:
+        supabase_session = conn.client.auth.get_session()
+        if supabase_session and supabase_session.user:
+            user  = supabase_session.user
+            email = user.email
 
-    if cookie_sid and cookie_email:
-        try:
             res = conn.client.table("active_sessions") \
                 .select("session_id") \
-                .eq("user_email", cookie_email) \
+                .eq("user_email", email) \
                 .limit(1) \
                 .execute()
 
-            if res.data and res.data[0]["session_id"] == cookie_sid:
-                supabase_session = conn.client.auth.get_session()
-                if supabase_session and supabase_session.user:
-                    metadata = supabase_session.user.user_metadata or {}
-                    st.session_state.logged_in    = True
-                    st.session_state.local_login  = True
-                    st.session_state.session_id   = cookie_sid
-                    st.session_state.user_email   = cookie_email
-                    st.session_state.first_name   = metadata.get("first_name", "Admin")
-                    st.session_state.last_name    = metadata.get("last_name", "")
-                    st.session_state.login_time   = datetime.now(timezone.utc)
-                    st.rerun()
-        except Exception:
-            pass
+            if res.data:
+                metadata = user.user_metadata or {}
+                st.session_state.logged_in   = True
+                st.session_state.local_login = True
+                st.session_state.session_id  = res.data[0]["session_id"]
+                st.session_state.user_email  = email
+                st.session_state.first_name  = metadata.get("first_name", "Admin")
+                st.session_state.last_name   = metadata.get("last_name", "")
+                st.session_state.login_time  = datetime.now(timezone.utc)
+                st.rerun()
+    except Exception:
+        pass
 
 try:
     if st.session_state.get("logged_in", False):
         if not is_valid_session():
-            cookie_manager.delete("puv_session_id")
-            cookie_manager.delete("puv_user_email")
             clear_session()
             st.warning("Naka-login na ang account mo sa ibang device.")
             st.rerun()
 
         if is_session_expired():
-            cookie_manager.delete("puv_session_id")
-            cookie_manager.delete("puv_user_email")
             clear_session()
             st.warning("Session expired. Please log in again.")
             st.rerun()
