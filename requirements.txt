@@ -7,3 +7,4 @@ tiktoken
 sentencepiece
 protobuf
 streamlit-extras
+extra-streamlit-components
