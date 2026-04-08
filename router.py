@@ -14,7 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
 # ── 3. Global CSS ──
 st.markdown("""
 <style>
@@ -32,15 +31,9 @@ st.markdown("""
   --muted:   rgb(140, 160, 180);
 }
 
-/* ── GLOBAL FONT & BOXING ── */
 * { box-sizing: border-box; }
+html, body, [class*="st-"] { font-family: 'Mulish', sans-serif !important; }
 
-/* Apply font safely so it doesn't break the sidebar arrow */
-html, body, [class*="st-"] {
-  font-family: 'Mulish', sans-serif !important;
-}
-
-/* ⭐️ FIX 1: Explicitly protect all Material Icons so 'keyboard_double' turns back into an arrow */
 i, .material-symbols-rounded, .material-icons, [data-testid="stIconMaterial"], [class*="stIcon"] {
   font-family: 'Material Symbols Rounded', 'Material Icons' !important;
 }
@@ -57,30 +50,22 @@ footer                         { display: none !important; }
   background: var(--navy) !important; border-radius: 8px !important;
   border: 1px solid var(--gold) !important; color: var(--gold) !important; padding: 5px !important;
 }
-[data-testid="stSidebarCollapsedControl"] svg { fill: var(--gold) !important; color: var(--gold) !important; }
 
 [data-testid="stSidebar"] {
   background: var(--navy) !important;
   border-right: 1px solid rgba(255,197,112,0.12) !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-  padding: 0 0 2rem 0 !important; background: var(--navy) !important; overflow-y: auto !important;
+  padding: 0 0 2rem 0 !important; background: var(--navy) !important;
 }
 [data-testid="stSidebar"] * { color: var(--sand) !important; }
 
 .sidebar-brand { padding: 1.6rem 1.4rem 1.2rem; border-bottom: 1px solid rgba(255,197,112,0.12); margin-bottom: .5rem; }
-.sidebar-brand .brand-badge {
-  display: inline-flex; align-items: center; gap: .4rem;
-  background: rgba(255,197,112,0.12); border: 1px solid rgba(255,197,112,0.28);
-  border-radius: 999px; padding: .22rem .75rem; margin-bottom: .7rem;
-}
-.sidebar-brand .brand-badge span { font-size: .6rem !important; font-weight: 700 !important; letter-spacing: .16em; text-transform: uppercase; color: var(--gold) !important; }
-.sidebar-brand h2 { font-family: 'Libre Baskerville', serif !important; font-size: 1.05rem !important; font-weight: 700 !important; color: #ffffff !important; line-height: 1.3; margin: 0; }
-.sidebar-brand h2 em { font-style: italic !important; color: var(--gold) !important; }
+.sidebar-brand h2 { font-family: 'Libre Baskerville', serif !important; font-size: 1.05rem !important; font-weight: 700; color: #ffffff !important; margin: 0; }
 
 .sidebar-user { padding: .8rem 1.4rem; background: rgba(255,197,112,0.05); border-bottom: 1px solid rgba(255,197,112,0.10); margin-bottom: .4rem; }
-.sidebar-user .user-name { font-size: .82rem !important; font-weight: 700 !important; color: #ffffff !important; display: flex; align-items: center; gap: .4rem; }
-.sidebar-user .user-email { font-size: .65rem !important; color: var(--muted) !important; margin-top: .18rem; display: block; }
+.sidebar-user .user-name { font-size: .82rem !important; font-weight: 700 !important; color: #ffffff !important; }
+.sidebar-user .user-email { font-size: .65rem !important; color: var(--muted) !important; display: block; }
 
 .sidebar-nav-label { font-size: .55rem !important; font-weight: 700 !important; letter-spacing: .18em; text-transform: uppercase; color: var(--muted) !important; padding: .6rem 1.4rem .25rem; display: block; }
 
@@ -88,7 +73,7 @@ footer                         { display: none !important; }
   display: flex !important; align-items: center !important; gap: .6rem !important;
   padding: .52rem 1.4rem !important; border-radius: 0 !important; font-size: .78rem !important;
   font-weight: 600 !important; color: rgba(239,210,176,0.80) !important; text-decoration: none !important;
-  transition: background .18s, color .18s !important; border-left: 3px solid transparent !important;
+  border-left: 3px solid transparent !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover { background: rgba(255,197,112,0.08) !important; color: var(--gold) !important; }
 [data-testid="stSidebar"] [data-testid="stPageLink"][aria-current="page"] a { background: rgba(255,197,112,0.12) !important; color: var(--gold) !important; border-left-color: var(--gold) !important; font-weight: 700 !important; }
@@ -96,77 +81,73 @@ footer                         { display: none !important; }
 [data-testid="stSidebar"] div.stButton > button {
   background: rgba(255,197,112,0.08) !important; color: var(--sand) !important;
   border: 1px solid rgba(255,197,112,0.20) !important; border-radius: 7px !important;
-  font-size: .72rem !important; font-weight: 700 !important; padding: .48rem 1rem !important;
-  margin: .3rem 1.4rem !important; width: calc(100% - 2.8rem) !important;
+  font-size: .72rem !important; font-weight: 700 !important; margin: .3rem 1.4rem !important; width: calc(100% - 2.8rem) !important;
 }
 
-[data-testid="stAppViewContainer"] { background-color: transparent !important; }
 [data-testid="stMain"] { background: var(--off) !important; }
 .block-container { padding: 2rem 2.5rem !important; max-width: 100% !important; }
 
-/* ⭐️ FIX 2: Added margin-top to push the footer away from the logout button */
-.sidebar-footer { 
-  padding: 1.5rem 1.4rem 1rem; 
-  margin-top: 3.5rem !important; 
-  border-top: 1px solid rgba(255,197,112,0.10); 
-  text-align: center;
-}
-.sidebar-footer .ver { font-size: .58rem !important; color: rgba(140,160,180,0.6) !important; text-transform: uppercase; letter-spacing: 0.1em; }
+.sidebar-footer { padding: 1.5rem 1.4rem 1rem; margin-top: 3.5rem !important; border-top: 1px solid rgba(255,197,112,0.10); text-align: center; }
+.sidebar-footer .ver { font-size: .58rem !important; color: rgba(140,160,180,0.6) !important; text-transform: uppercase; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 4. INSTANT URL AUTH RESOLUTION (DECODING) ──
+# ── 4. SECURE SESSION RESOLUTION (Cross-Device Fix) ──
+# We disable the "auto-sync" and only allow login if a specific 
+# session token exists for THIS browser window.
+
 if "logged_in" not in st.session_state:
-    try:
-        # First, check if there's a native Supabase session active
-        session = conn.client.auth.get_session()
-        if session and session.user:
+    st.session_state.logged_in = False
+
+try:
+    # 1. Check if the URL has a fresh login token (just logged in)
+    if "session" in st.query_params:
+        token_str = st.query_params["session"]
+        padded_token = token_str + "=" * ((4 - len(token_str) % 4) % 4)
+        user_data = json.loads(base64.urlsafe_b64decode(padded_token).decode("utf-8"))
+        
+        st.session_state.logged_in = True
+        st.session_state.user_email = user_data.get("e", "")
+        st.session_state.first_name = user_data.get("f", "Admin")
+        st.session_state.last_name  = user_data.get("l", "")
+        
+        # Clean the URL so the session isn't bookmarked/shared
+        st.query_params.clear()
+
+    # 2. Otherwise, check if Supabase has a VALID user for THIS specific browser
+    else:
+        # We use 'get_user' instead of 'get_session' because get_user 
+        # is a server-side check that is more secure.
+        user_res = conn.client.auth.get_user()
+        if user_res and user_res.user:
             st.session_state.logged_in = True
-            st.session_state.user_email = session.user.email or ""
-            metadata = session.user.user_metadata or {}
-            st.session_state.first_name = metadata.get("first_name", "Admin")
-            st.session_state.last_name  = metadata.get("last_name", "")
-            
-        # Fallback: Check if the URL has our encoded "session" token
-        elif "session" in st.query_params:
-            # Grab the token and decode it back into a Python dictionary
-            token_str = st.query_params["session"]
-            
-            # Fix any missing padding that URLs sometimes strip
-            padded_token = token_str + "=" * ((4 - len(token_str) % 4) % 4)
-            decoded_bytes = base64.urlsafe_b64decode(padded_token)
-            user_data = json.loads(decoded_bytes.decode("utf-8"))
-            
-            st.session_state.logged_in = True
-            st.session_state.user_email = user_data.get("e", "")
-            st.session_state.first_name = user_data.get("f", "Admin")
-            st.session_state.last_name  = user_data.get("l", "")
-            
+            st.session_state.user_email = user_res.user.email
+            metadata = user_res.user.user_metadata or {}
+            st.session_state.first_name = metadata.get("full_name", metadata.get("first_name", "Admin"))
+            st.session_state.last_name = metadata.get("last_name", "")
         else:
             st.session_state.logged_in = False
             
-    except Exception as e:
-        # If the token is invalid or tampered with, force logout
-        st.session_state.logged_in = False
+except Exception:
+    st.session_state.logged_in = False
 
 
 # ── 5. Pages ──
-login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
-dashboard_page   = st.Page("dashboard.py",          title="Sentiment Dashboard", icon="📊")
-builder_page     = st.Page("builder.py",            title="Form Builder",        icon="🛠️")
-testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
-settings_page    = st.Page("settings.py",           title="Settings",            icon="⚙️")
-public_form_page = st.Page("public_form.py",        title="Take Survey",         icon="📋")
+login_page       = st.Page("login.py",               title="Log in",               icon="🔐")
+dashboard_page   = st.Page("dashboard.py",           title="Sentiment Dashboard", icon="📊")
+builder_page     = st.Page("builder.py",             title="Form Builder",         icon="🛠️")
+testing_page     = st.Page("sentiment_analysis.py", title="Analysis",             icon="📝")
+settings_page    = st.Page("settings.py",            title="Settings",            icon="⚙️")
+public_form_page = st.Page("public_form.py",        title="Take Survey",          icon="📋")
 
 # ── 6. Router ──
 if "form_id" in st.query_params:
-    # Hide sidebar for public commuters taking the survey
-    st.html('<style>[data-testid="stSidebarCollapsedControl"] { display: none !important; } [data-testid="stSidebar"] { display: none !important; }</style>')
+    st.html('<style>[data-testid="stSidebar"] { display: none !important; }</style>')
     pg = st.navigation([public_form_page], position="hidden")
 
-elif st.session_state.logged_in:
+elif st.session_state.get("logged_in"):
     pg = st.navigation(
-        [dashboard_page, builder_page, testing_page, settings_page, public_form_page],
+        [dashboard_page, builder_page, testing_page, settings_page],
         position="sidebar"
     )
 
@@ -178,13 +159,15 @@ elif st.session_state.logged_in:
         </div>
         """)
 
-        first_name = st.session_state.get("first_name", "Admin")
-        last_name  = st.session_state.get("last_name", "")
-        user_email = st.session_state.get("user_email", "")
+        # Display CURRENT user info directly from validated session state
+        f_name = st.session_state.get("first_name", "Admin")
+        l_name = st.session_state.get("last_name", "")
+        u_email = st.session_state.get("user_email", "")
+        
         st.html(f"""
         <div class="sidebar-user">
-          <div class="user-name">{first_name} {last_name}</div>
-          <span class="user-email">{user_email}</span>
+          <div class="user-name">{f_name} {l_name}</div>
+          <span class="user-email">{u_email}</span>
         </div>
         """)
 
@@ -196,19 +179,12 @@ elif st.session_state.logged_in:
 
         st.divider()
 
-        if st.button("🚪 Logout", use_container_width=True):
-            # 1. Clear URL Parameters
-            st.query_params.clear()
-            
-            # 2. Clear Session State
-            st.session_state.clear()
-            
-            # 3. Sign out of Supabase
+        if st.button("🚪Logout", use_container_width=True):
             try:
                 conn.client.auth.sign_out()
-            except Exception:
-                pass
-
+            except: pass
+            st.query_params.clear()
+            st.session_state.clear()
             st.rerun()
 
         st.html("""
@@ -218,8 +194,7 @@ elif st.session_state.logged_in:
         """)
 
 else:
-    # Hide sidebar for logged-out users on the login screen
-    st.html('<style>[data-testid="stSidebarCollapsedControl"] { display: none !important; } [data-testid="stSidebar"] { display: none !important; }</style>')
+    st.html('<style>[data-testid="stSidebar"] { display: none !important; }</style>')
     pg = st.navigation([login_page], position="hidden")
 
 pg.run()
