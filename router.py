@@ -122,32 +122,34 @@ SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
 import uuid
 
 def set_session(user):
-    import uuid
     session_id = str(uuid.uuid4())
 
     st.session_state.logged_in = True
-    st.session_state.local_login = True  # ⭐️ THIS WAS MISSING
+    st.session_state.local_login = True
     st.session_state.session_id = session_id
     st.session_state.user_email = user.email or ""
 
     metadata = user.user_metadata or {}
     st.session_state.first_name = metadata.get("first_name", "Admin")
     st.session_state.last_name  = metadata.get("last_name", "")
-
     st.session_state.login_time = datetime.now(timezone.utc)
 
+    # ✅ on_conflict ensures only ONE row per user, never overwrites another user
     conn.client.table("active_sessions").upsert({
         "user_email": st.session_state.user_email,
-        "session_id": session_id
-    }).execute()
+        "session_id": session_id,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }, on_conflict="user_email").execute()
 
 def is_valid_session():
     if "session_id" not in st.session_state:
         return False
 
+    # ✅ Filter by THIS user's email only
     res = conn.client.table("active_sessions") \
         .select("session_id") \
         .eq("user_email", st.session_state.user_email) \
+        .limit(1) \
         .execute()
 
     if not res.data:
@@ -157,6 +159,7 @@ def is_valid_session():
 
 def clear_session():
     try:
+        # ✅ Delete only THIS user's session, not everyone's
         conn.client.table("active_sessions") \
             .delete() \
             .eq("user_email", st.session_state.get("user_email", "")) \
@@ -188,30 +191,32 @@ if "logged_in" not in st.session_state:
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
 
+# ── AUTH CHECK ──
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "local_login" not in st.session_state:
+    st.session_state.local_login = False
+
 try:
-    session = conn.client.auth.get_session()
-
-    # ✅ CASE 1: First login (allow Supabase session)
-    pass
-
     if st.session_state.get("logged_in", False):
+        # Single-device check
+        if not is_valid_session():
+            clear_session()
+            st.warning("Naka-login na ang account mo sa ibang device.")
+            st.rerun()
 
-      # 🔥 SINGLE DEVICE CHECK
-      if not is_valid_session():
-          clear_session()
-          st.warning("You were logged out because your account was used on another device.")
-          st.rerun()
+        # Timeout check
+        if is_session_expired():
+            clear_session()
+            st.warning("Session expired. Please log in again.")
+            st.rerun()
 
-      # ⏱️ expiration
-      if is_session_expired():
-          clear_session()
-          st.warning("Session expired. Please log in again.")
-          st.rerun()
+        # ✅ Reset timer on every interaction
+        st.session_state.login_time = datetime.now(timezone.utc)
 
-      st.session_state.login_time = datetime.now(timezone.utc)
-
-    # ❌ No session at all
-    elif not session or not session.user:
+    else:
+        # ✅ Never auto-restore from Supabase — require explicit login
         st.session_state.logged_in = False
         st.session_state.local_login = False
 

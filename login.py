@@ -163,31 +163,32 @@ def handle_login_form():
         try:
             auth = conn.client.auth.sign_in_with_password({"email": email, "password": password})
             if auth.user:
+                import uuid
+                from datetime import datetime, timezone
+
+                session_id = str(uuid.uuid4())
                 metadata = auth.user.user_metadata or {}
-                
-                # 1. Setup session state
+
+                # ✅ Set everything directly in session_state
                 st.session_state.logged_in = True
+                st.session_state.local_login = True
+                st.session_state.session_id = session_id
                 st.session_state.user_email = auth.user.email
                 st.session_state.first_name = metadata.get("first_name", "Admin")
                 st.session_state.last_name  = metadata.get("last_name", "")
+                st.session_state.login_time = datetime.now(timezone.utc)
 
-                # 2. Package the data into a tiny dictionary (using short keys to save space)
-                token_payload = {
-                    "e": auth.user.email,
-                    "f": st.session_state.first_name,
-                    "l": st.session_state.last_name
-                }
-                
-                # 3. Compress, encode, and convert to a URL-safe string
-                json_str = json.dumps(token_payload)
-                token_bytes = base64.urlsafe_b64encode(json_str.encode("utf-8"))
-                safe_token = token_bytes.decode("utf-8")
+                # ✅ Save to Supabase active_sessions
+                conn.client.table("active_sessions").upsert({
+                    "user_email": auth.user.email,
+                    "session_id": session_id,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }, on_conflict="user_email").execute()
 
-                # 4. Push the single "code" to the URL
+                # ✅ Clear query params then rerun
                 st.query_params.clear()
-                st.query_params["session"] = safe_token
+                st.rerun()
 
-                st.rerun() 
         except Exception as e:
             st.error(f"❌ Login failed: {e}")
 
