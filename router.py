@@ -119,9 +119,13 @@ from datetime import datetime, timedelta, timezone
 
 SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
 
+import uuid
+
 def set_session(user):
+    session_id = str(uuid.uuid4())
+
     st.session_state.logged_in = True
-    st.session_state.local_login = True  # ⭐️ IMPORTANT
+    st.session_state.session_id = session_id
     st.session_state.user_email = user.email or ""
 
     metadata = user.user_metadata or {}
@@ -130,20 +134,41 @@ def set_session(user):
 
     st.session_state.login_time = datetime.now(timezone.utc)
 
+    # 🔥 Save session in DB (overwrite previous)
+    conn.client.table("active_sessions").upsert({
+        "user_email": st.session_state.user_email,
+        "session_id": session_id
+    }).execute()
+
+def is_valid_session():
+    if "session_id" not in st.session_state:
+        return False
+
+    res = conn.client.table("active_sessions") \
+        .select("session_id") \
+        .eq("user_email", st.session_state.user_email) \
+        .execute()
+
+    if not res.data:
+        return False
+
+    return res.data[0]["session_id"] == st.session_state.session_id
 
 def clear_session():
-    keys = list(st.session_state.keys())
-    for key in keys:
-        del st.session_state[key]
+    try:
+        conn.client.table("active_sessions") \
+            .delete() \
+            .eq("user_email", st.session_state.get("user_email", "")) \
+            .execute()
+    except Exception:
+        pass
 
-    st.session_state.logged_in = False
-    st.session_state.local_login = False  # ⭐️ IMPORTANT
+    st.session_state.clear()
 
     try:
         conn.client.auth.sign_out()
     except Exception:
         pass
-
 
 def is_session_expired():
     if "login_time" not in st.session_state:
@@ -169,16 +194,21 @@ try:
     if session and session.user and not st.session_state.local_login:
         set_session(session.user)
 
-    # ✅ CASE 2: Already logged in locally (normal usage)
     if st.session_state.get("logged_in", False):
 
-        if is_session_expired():
-            clear_session()
-            st.warning("Session expired. Please log in again.")
-            st.rerun()
+      # 🔥 SINGLE DEVICE CHECK
+      if not is_valid_session():
+          clear_session()
+          st.warning("You were logged out because your account was used on another device.")
+          st.rerun()
 
-        # refresh timer
-        st.session_state.login_time = datetime.now(timezone.utc)
+      # ⏱️ expiration
+      if is_session_expired():
+          clear_session()
+          st.warning("Session expired. Please log in again.")
+          st.rerun()
+
+      st.session_state.login_time = datetime.now(timezone.utc)
 
     # ❌ No session at all
     elif not session or not session.user:
