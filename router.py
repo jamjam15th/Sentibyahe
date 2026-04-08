@@ -147,7 +147,7 @@ def clear_session():
 
 def is_session_expired():
     if "login_time" not in st.session_state:
-        return True
+        return False
 
     now = datetime.now(timezone.utc)
     login_time = st.session_state.login_time
@@ -159,27 +159,35 @@ def is_session_expired():
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+if "local_login" not in st.session_state:
+    st.session_state.local_login = False
+
 try:
-  session = conn.client.auth.get_session()
+    session = conn.client.auth.get_session()
 
-  # 🚨 Only trust session if WE created it locally
-  if session and session.user and st.session_state.get("local_login", False):
-      if not st.session_state.logged_in:
-          set_session(session.user)
+    # ✅ CASE 1: First login (allow Supabase session)
+    if session and session.user and not st.session_state.local_login:
+        set_session(session.user)
 
-      if is_session_expired():
-          clear_session()
-          st.warning("Session expired. Please log in again.")
-          st.rerun()
+    # ✅ CASE 2: Already logged in locally (normal usage)
+    if st.session_state.get("logged_in", False):
 
-      st.session_state.login_time = datetime.now(timezone.utc)
+        if is_session_expired():
+            clear_session()
+            st.warning("Session expired. Please log in again.")
+            st.rerun()
 
-  else:
-      clear_session()
+        # refresh timer
+        st.session_state.login_time = datetime.now(timezone.utc)
+
+    # ❌ No session at all
+    elif not session or not session.user:
+        st.session_state.logged_in = False
+        st.session_state.local_login = False
 
 except Exception:
-    clear_session()
-
+    st.session_state.logged_in = False
+    st.session_state.local_login = False
 
 # ── 5. Pages ──
 login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
