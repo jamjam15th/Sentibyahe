@@ -132,7 +132,13 @@ def set_session(user):
 
 
 def clear_session():
-    st.session_state.clear()
+    keys = list(st.session_state.keys())
+    for key in keys:
+        del st.session_state[key]
+
+    # Ensure logged_in exists after clearing
+    st.session_state.logged_in = False
+
     try:
         conn.client.auth.sign_out()
     except Exception:
@@ -191,7 +197,7 @@ if "form_id" in st.query_params:
     st.html('<style>[data-testid="stSidebarCollapsedControl"] { display: none !important; } [data-testid="stSidebar"] { display: none !important; }</style>')
     pg = st.navigation([public_form_page], position="hidden")
 
-elif st.session_state.logged_in:
+elif st.session_state.get("logged_in", False):
     pg = st.navigation(
         [dashboard_page, builder_page, testing_page, settings_page, public_form_page],
         position="sidebar"
@@ -225,19 +231,6 @@ elif st.session_state.logged_in:
 
         if st.button("🚪 Logout", use_container_width=True):
             clear_session()
-            st.rerun()
-            # 1. Clear URL Parameters
-            st.query_params.clear()
-            
-            # 2. Clear Session State
-            st.session_state.clear()
-            
-            # 3. Sign out of Supabase
-            try:
-                conn.client.auth.sign_out()
-            except Exception:
-                pass
-
             st.rerun()
 
         st.html("""
