@@ -166,13 +166,12 @@ def clear_session():
     except Exception:
         pass
 
-    # ✅ Clear localStorage
-    st.components.v1.html("""
-        <script>
-            localStorage.removeItem('puv_session_id');
-            localStorage.removeItem('puv_user_email');
-        </script>
-    """, height=0)
+    # ✅ Delete cookies
+    try:
+        cookie_manager.delete("puv_session_id")
+        cookie_manager.delete("puv_user_email")
+    except Exception:
+        pass
 
     st.session_state.clear()
 
@@ -191,52 +190,46 @@ def is_session_expired():
     return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
 
+import extra_streamlit_components as stx
+
+# ── Cookie Manager (dapat sa labas ng function, top-level) ──
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager(key="puv_cookie_manager")
+
+cookie_manager = get_cookie_manager()
+
 # ── AUTH CHECK ──
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+if "local_login" not in st.session_state:
+    st.session_state.local_login = False
+
+# ✅ Try to restore from cookie on refresh
 if not st.session_state.get("logged_in", False):
-    # Inject JS na magre-read ng localStorage at ilalagay sa query param
-    st.components.v1.html("""
-        <script>
-            const sid = localStorage.getItem('puv_session_id');
-            const email = localStorage.getItem('puv_user_email');
-            if (sid && email) {
-                const url = new URL(window.parent.location.href);
-                if (!url.searchParams.get('restore')) {
-                    url.searchParams.set('restore', sid);
-                    url.searchParams.set('re', email);
-                    window.parent.location.replace(url.toString());
-                }
-            }
-        </script>
-    """, height=0)
+    cookie_sid   = cookie_manager.get("puv_session_id")
+    cookie_email = cookie_manager.get("puv_user_email")
 
-    # Basahin ang query params na galing sa localStorage
-    restore_sid = st.query_params.get("restore")
-    restore_email = st.query_params.get("re")
-
-    if restore_sid and restore_email:
+    if cookie_sid and cookie_email:
         try:
             res = conn.client.table("active_sessions") \
                 .select("session_id") \
-                .eq("user_email", restore_email) \
+                .eq("user_email", cookie_email) \
                 .limit(1) \
                 .execute()
 
-            if res.data and res.data[0]["session_id"] == restore_sid:
-                # ✅ Valid — i-restore ang session
+            if res.data and res.data[0]["session_id"] == cookie_sid:
                 supabase_session = conn.client.auth.get_session()
                 if supabase_session and supabase_session.user:
                     metadata = supabase_session.user.user_metadata or {}
-                    st.session_state.logged_in = True
-                    st.session_state.local_login = True
-                    st.session_state.session_id = restore_sid
-                    st.session_state.user_email = restore_email
-                    st.session_state.first_name = metadata.get("first_name", "Admin")
-                    st.session_state.last_name  = metadata.get("last_name", "")
-                    st.session_state.login_time = datetime.now(timezone.utc)
-                    st.query_params.clear()
+                    st.session_state.logged_in    = True
+                    st.session_state.local_login  = True
+                    st.session_state.session_id   = cookie_sid
+                    st.session_state.user_email   = cookie_email
+                    st.session_state.first_name   = metadata.get("first_name", "Admin")
+                    st.session_state.last_name    = metadata.get("last_name", "")
+                    st.session_state.login_time   = datetime.now(timezone.utc)
                     st.rerun()
         except Exception:
             pass
@@ -244,24 +237,15 @@ if not st.session_state.get("logged_in", False):
 try:
     if st.session_state.get("logged_in", False):
         if not is_valid_session():
-            # ✅ Clear localStorage din kapag na-invalidate
-            st.components.v1.html("""
-                <script>
-                    localStorage.removeItem('puv_session_id');
-                    localStorage.removeItem('puv_user_email');
-                </script>
-            """, height=0)
+            cookie_manager.delete("puv_session_id")
+            cookie_manager.delete("puv_user_email")
             clear_session()
             st.warning("Naka-login na ang account mo sa ibang device.")
             st.rerun()
 
         if is_session_expired():
-            st.components.v1.html("""
-                <script>
-                    localStorage.removeItem('puv_session_id');
-                    localStorage.removeItem('puv_user_email');
-                </script>
-            """, height=0)
+            cookie_manager.delete("puv_session_id")
+            cookie_manager.delete("puv_user_email")
             clear_session()
             st.warning("Session expired. Please log in again.")
             st.rerun()
@@ -269,11 +253,11 @@ try:
         st.session_state.login_time = datetime.now(timezone.utc)
 
     else:
-        st.session_state.logged_in = False
+        st.session_state.logged_in   = False
         st.session_state.local_login = False
 
 except Exception:
-    st.session_state.logged_in = False
+    st.session_state.logged_in   = False
     st.session_state.local_login = False
 
 # ── 5. Pages ──
