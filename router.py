@@ -191,11 +191,6 @@ def is_session_expired():
     return now - login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
 
-# ── Cookie Manager (dapat sa labas ng function, top-level) ──
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager(key="puv_cookie_manager")
-
 cookie_manager = stx.CookieManager(key="puv_cookie_manager")
 
 # ── AUTH CHECK ──
