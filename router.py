@@ -143,9 +143,8 @@ def is_valid_session():
     if "session_id" not in st.session_state:
         return False
 
-    # ✅ Filter by THIS user's email only
     res = conn.client.table("active_sessions") \
-        .select("session_id") \
+        .select("session_id, device_id") \
         .eq("user_email", st.session_state.user_email) \
         .limit(1) \
         .execute()
@@ -153,7 +152,10 @@ def is_valid_session():
     if not res.data:
         return False
 
-    return res.data[0]["session_id"] == st.session_state.session_id
+    return (
+        res.data[0]["session_id"] == st.session_state.session_id and
+        res.data[0].get("device_id") == st.session_state.get("device_id")
+    )
 
 def clear_session():
     try:
