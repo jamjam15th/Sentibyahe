@@ -8,11 +8,7 @@ import extra_streamlit_components as stx
 from datetime import datetime, timezone, timedelta
 import uuid
 
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager(key="puv_cookie_manager")
-
-cookie_manager = get_cookie_manager()
+cookie_manager = st.session_state.get("_cookie_manager")
 
 # ==========================================
 # INITIAL SETUP & STATE
@@ -201,7 +197,7 @@ def handle_login_form():
                         localStorage.setItem('puv_user_email', '{auth.user.email}');
                     </script>
                 """, height=0)
-                
+
                 expires = datetime.now(timezone.utc) + timedelta(days=7)
                 cookie_manager.set("puv_session_id", session_id, expires_at=expires)
                 cookie_manager.set("puv_user_email", auth.user.email, expires_at=expires)

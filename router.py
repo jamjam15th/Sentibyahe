@@ -192,6 +192,7 @@ def is_session_expired():
 
 
 cookie_manager = stx.CookieManager(key="puv_cookie_manager")
+st.session_state["_cookie_manager"] = cookie_manager  # ← idagdag ito
 
 # ── AUTH CHECK ──
 if "logged_in" not in st.session_state:
