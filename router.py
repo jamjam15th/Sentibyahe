@@ -159,13 +159,20 @@ def is_valid_session():
 
 def clear_session():
     try:
-        # ✅ Delete only THIS user's session, not everyone's
         conn.client.table("active_sessions") \
             .delete() \
             .eq("user_email", st.session_state.get("user_email", "")) \
             .execute()
     except Exception:
         pass
+
+    # ✅ Clear localStorage
+    st.components.v1.html("""
+        <script>
+            localStorage.removeItem('puv_session_id');
+            localStorage.removeItem('puv_user_email');
+        </script>
+    """, height=0)
 
     st.session_state.clear()
 
@@ -188,18 +195,73 @@ def is_session_expired():
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-if "local_login" not in st.session_state:
-    st.session_state.local_login = False
+if not st.session_state.get("logged_in", False):
+    # Inject JS na magre-read ng localStorage at ilalagay sa query param
+    st.components.v1.html("""
+        <script>
+            const sid = localStorage.getItem('puv_session_id');
+            const email = localStorage.getItem('puv_user_email');
+            if (sid && email) {
+                const url = new URL(window.parent.location.href);
+                if (!url.searchParams.get('restore')) {
+                    url.searchParams.set('restore', sid);
+                    url.searchParams.set('re', email);
+                    window.parent.location.replace(url.toString());
+                }
+            }
+        </script>
+    """, height=0)
+
+    # Basahin ang query params na galing sa localStorage
+    restore_sid = st.query_params.get("restore")
+    restore_email = st.query_params.get("re")
+
+    if restore_sid and restore_email:
+        try:
+            res = conn.client.table("active_sessions") \
+                .select("session_id") \
+                .eq("user_email", restore_email) \
+                .limit(1) \
+                .execute()
+
+            if res.data and res.data[0]["session_id"] == restore_sid:
+                # ✅ Valid — i-restore ang session
+                supabase_session = conn.client.auth.get_session()
+                if supabase_session and supabase_session.user:
+                    metadata = supabase_session.user.user_metadata or {}
+                    st.session_state.logged_in = True
+                    st.session_state.local_login = True
+                    st.session_state.session_id = restore_sid
+                    st.session_state.user_email = restore_email
+                    st.session_state.first_name = metadata.get("first_name", "Admin")
+                    st.session_state.last_name  = metadata.get("last_name", "")
+                    st.session_state.login_time = datetime.now(timezone.utc)
+                    st.query_params.clear()
+                    st.rerun()
+        except Exception:
+            pass
 
 try:
     if st.session_state.get("logged_in", False):
-        # Already logged in — validate session
         if not is_valid_session():
+            # ✅ Clear localStorage din kapag na-invalidate
+            st.components.v1.html("""
+                <script>
+                    localStorage.removeItem('puv_session_id');
+                    localStorage.removeItem('puv_user_email');
+                </script>
+            """, height=0)
             clear_session()
             st.warning("Naka-login na ang account mo sa ibang device.")
             st.rerun()
 
         if is_session_expired():
+            st.components.v1.html("""
+                <script>
+                    localStorage.removeItem('puv_session_id');
+                    localStorage.removeItem('puv_user_email');
+                </script>
+            """, height=0)
             clear_session()
             st.warning("Session expired. Please log in again.")
             st.rerun()
@@ -207,36 +269,8 @@ try:
         st.session_state.login_time = datetime.now(timezone.utc)
 
     else:
-        # ✅ Try to restore session from Supabase after browser refresh
-        supabase_session = conn.client.auth.get_session()
-
-        if supabase_session and supabase_session.user:
-            user = supabase_session.user
-
-            # Check kung may active session pa sa DB para sa user na ito
-            res = conn.client.table("active_sessions") \
-                .select("session_id") \
-                .eq("user_email", user.email) \
-                .limit(1) \
-                .execute()
-
-            if res.data:
-                # ✅ May active session pa — i-restore
-                metadata = user.user_metadata or {}
-                st.session_state.logged_in = True
-                st.session_state.local_login = True
-                st.session_state.session_id = res.data[0]["session_id"]
-                st.session_state.user_email = user.email
-                st.session_state.first_name = metadata.get("first_name", "Admin")
-                st.session_state.last_name  = metadata.get("last_name", "")
-                st.session_state.login_time = datetime.now(timezone.utc)
-            else:
-                # Walang active session sa DB — force login
-                st.session_state.logged_in = False
-                st.session_state.local_login = False
-        else:
-            st.session_state.logged_in = False
-            st.session_state.local_login = False
+        st.session_state.logged_in = False
+        st.session_state.local_login = False
 
 except Exception:
     st.session_state.logged_in = False

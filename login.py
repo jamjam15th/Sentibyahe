@@ -185,7 +185,16 @@ def handle_login_form():
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }, on_conflict="user_email").execute()
 
-                # ✅ Clear query params then rerun
+                # Pagkatapos ma-set ang session_state, idagdag ito bago mag-rerun:
+                st.components.v1.html(f"""
+                    <script>
+                        localStorage.setItem('puv_session_id', '{session_id}');
+                        localStorage.setItem('puv_user_email', '{auth.user.email}');
+                    </script>
+                """, height=0)
+
+                import time
+                time.sleep(0.3)  # bigyan ng oras para ma-execute ang script
                 st.query_params.clear()
                 st.rerun()
 
