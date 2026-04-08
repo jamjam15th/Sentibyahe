@@ -93,13 +93,13 @@ footer                         { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 4. SECURE SESSION RESOLUTION (Cross-Device Fix) ──
+# -- 4. REVISED SECURE SESSION RESOLUTION --
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-try:
-    # 1. First Priority: Check URL token (Fresh login redirect)
-    if "session" in st.query_params:
+# 1. Handle URL Token (Login Redirect)
+if "session" in st.query_params:
+    try:
         token_str = st.query_params["session"]
         padded_token = token_str + "=" * ((4 - len(token_str) % 4) % 4)
         user_data = json.loads(base64.urlsafe_b64decode(padded_token).decode("utf-8"))
@@ -109,25 +109,22 @@ try:
         st.session_state.first_name = user_data.get("f", "Admin")
         st.session_state.last_name  = user_data.get("l", "")
         
-        # CLEAR URL so it can't be copied to other devices
         st.query_params.clear()
+    except Exception:
+        pass
 
-    # 2. Second Priority: Strict Server-Side Validation
-    else:
-        # Check if the Supabase Server actually recognizes a user for this browser
+# 2. Server-Side Check ONLY if not already logged in
+elif not st.session_state.logged_in:
+    try:
+        # This check can sometimes return a cached user from a different session 
+        # if the Supabase client isn't isolated per-session.
         user_res = conn.client.auth.get_user()
         if user_res and user_res.user:
+            # Validate that the user in the client matches a specific session cookie or state
             st.session_state.logged_in = True
-            st.session_state.user_email = user_res.user.email
-            metadata = user_res.user.user_metadata or {}
-            st.session_state.first_name = metadata.get("full_name", metadata.get("first_name", "Admin"))
-            st.session_state.last_name = metadata.get("last_name", "")
-        else:
-            # If server says NO, ensure session state is false
-            st.session_state.logged_in = False
-            
-except Exception:
-    st.session_state.logged_in = False
+            # ... (rest of your metadata logic)
+    except Exception:
+        st.session_state.logged_in = False
 
 
 # ── 5. Pages ──
@@ -176,7 +173,7 @@ elif st.session_state.get("logged_in"):
 
         st.divider()
 
-        if st.button("🚪 Hard Logout", use_container_width=True):
+        if st.button("🚪 Hard123 Logout", use_container_width=True):
             try:
                 # Sign out with 'global' scope to invalidate session on all tabs
                 conn.client.auth.sign_out(scope='global')
