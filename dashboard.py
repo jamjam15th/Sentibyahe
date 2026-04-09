@@ -323,20 +323,18 @@ def render_dashboard():
 
     # FIX #5: overall_avg uses ONLY the 5 SERVQUAL dims, NOT General Ratings
   # ── SERVQUAL Radar & Overall KPI ──
+   # ── SERVQUAL Radar & Overall KPI ──
     has_servqual_data = bool(present_servqual_dims) and df[list(present_servqual_dims.values())].notna().any().any()
 
-    overall_avg = 0.0
+    overall_avg = None
     if has_servqual_data:
-        # Optional: normalize each dimension to 5 if your scale is different
-        normalized_df = df[present_servqual_dims.values()].apply(lambda col: col.apply(lambda x: normalize_to_5(x, scale_max=5)))
+        # Compute average per SERVQUAL dimension directly
+        radar_df = df[present_servqual_dims.values()].mean().rename({v: k for k, v in present_servqual_dims.items()})
         
-        # Compute average per dimension
-        radar_df = normalized_df.mean().rename({v: k for k, v in present_servqual_dims.items()})
-
         # Overall SERVQUAL avg (mean of 5 dimensions)
         overall_avg = radar_df.mean()
 
-        # Plot radar
+        # Plot radar chart
         fig = go.Figure(
             data=go.Scatterpolar(
                 r=radar_df.values,
@@ -432,7 +430,6 @@ def render_dashboard():
       <div class="kpi-sub">{pos_count} positive responses</div>
     </div>""", unsafe_allow_html=True)
 
-    # FIX #5: Overall SERVQUAL shows only the 5 SERVQUAL dims
     servqual_display = f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>" if overall_avg is not None else "N/A"
     servqual_subtext = "Avg of 5 SERVQUAL dimensions" if overall_avg is not None else "No SERVQUAL tags yet"
 
