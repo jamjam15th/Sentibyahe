@@ -416,19 +416,47 @@ def render_dashboard():
       <div class="kpi-pending">⏳ {pending_n} pending</div>
     </div>""", unsafe_allow_html=True)
 
-    # FIX #8: General Ratings shown as a separate banner below KPIs, not mixed in
     if has_general_ratings and general_ratings_avg_val is not None:
         gr_pct = (general_ratings_avg_val / 5) * 100
         gr_color = "#4a7c59" if general_ratings_avg_val >= 4 else "#8b9dc3" if general_ratings_avg_val >= 3 else "#b03a2e"
+        gr_label = "Good" if general_ratings_avg_val >= 4 else "Fair" if general_ratings_avg_val >= 3 else "Needs Improvement"
+        gr_emoji = "✅" if general_ratings_avg_val >= 4 else "🔶" if general_ratings_avg_val >= 3 else "🔴"
         st.markdown(f"""
-        <div class="gen-rating-bar">
-          <div class="label">📋 General Ratings (untagged Likert questions)</div>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:.4rem;">
-            <div class="val" style="color:{gr_color};">{general_ratings_avg_val:.2f} / 5</div>
-            <div style="flex:1;background:rgba(108,117,125,0.12);border-radius:999px;height:7px;overflow:hidden;">
-              <div style="width:{gr_pct:.1f}%;height:100%;border-radius:999px;background:{gr_color};transition:width .4s;"></div>
+        <div style="background:#fff;border:1px solid rgba(108,117,125,0.2);border-radius:10px;
+                    padding:1rem 1.4rem;margin-bottom:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+            <div style="font-size:.65rem;font-weight:700;color:#6c757d;text-transform:uppercase;
+                        letter-spacing:.1em;margin-bottom:.3rem;">
+                📋 General Ratings
             </div>
-          </div>
+            <div style="font-size:.78rem;color:rgb(120,148,172);margin-bottom:.5rem;">
+                Average of untagged Likert questions (not part of SERVQUAL scoring)
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:1.4rem;font-weight:700;color:{gr_color};
+                            font-family:'Libre Baskerville',serif;">{general_ratings_avg_val:.2f}</span>
+                <span style="font-size:.8rem;color:rgb(120,148,172);">/ 5</span>
+                <span style="background:{'rgba(74,124,89,0.1)' if gr_color=='#4a7c59' else 'rgba(139,157,195,0.1)' if gr_color=='#8b9dc3' else 'rgba(176,58,46,0.1)'};
+                            color:{gr_color};padding:2px 10px;border-radius:999px;
+                            font-size:.68rem;font-weight:700;">{gr_emoji} {gr_label}</span>
+            </div>
+            </div>
+            <div style="min-width:200px;flex:1;max-width:340px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:.3rem;">
+                <span style="font-size:.65rem;color:rgb(120,148,172);">1</span>
+                <span style="font-size:.65rem;color:rgb(120,148,172);">5</span>
+            </div>
+            <div style="background:rgba(108,117,125,0.12);border-radius:999px;height:10px;overflow:hidden;">
+                <div style="width:{gr_pct:.1f}%;height:100%;border-radius:999px;
+                            background:linear-gradient(90deg,{gr_color}99,{gr_color});
+                            transition:width .6s ease;"></div>
+            </div>
+            <div style="text-align:center;margin-top:.3rem;font-size:.65rem;color:rgb(120,148,172);">
+                {gr_pct:.0f}% of maximum score
+            </div>
+            </div>
+        </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -450,6 +478,7 @@ def render_dashboard():
     # FIX #9: General Ratings is NOT in the radar polygon.
     # It appears as a separate bar below the radar.
     # ─────────────────────────────────
+    
     with tab1:
         if not has_servqual_data:
             # FIX #10: More helpful empty state message
@@ -502,6 +531,15 @@ def render_dashboard():
                         paper_bgcolor="rgba(0,0,0,0)",
                         height=340,
                     )
+                    # Add this BEFORE st.plotly_chart(fig, ...) inside col_r1:
+                    st.markdown("""
+                    <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
+                                border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
+                    📌 <strong>How to read this:</strong> Each axis is a service quality dimension (1–5 scale). 
+                    A wider, more symmetrical shape means balanced, high-quality service. 
+                    A narrow or lopsided shape highlights weak areas.
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     bar_data = pd.DataFrame({"Dimension": labels, "Score": values})
@@ -619,32 +657,69 @@ def render_dashboard():
             )
             st.altair_chart(trend_chart, use_container_width=True)
 
+# REPLACE the Daily Sentiment Distribution section inside tab2:
             if sent_col in df.columns:
                 st.markdown('<div class="section-head">Daily Sentiment Distribution</div>', unsafe_allow_html=True)
+                
+                # Helper insight text above chart
+                st.markdown("""
+                <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
+                            border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
+                📌 <strong>How to read this:</strong> Each bar represents one day. 
+                Green = positive feedback, blue-gray = neutral, red = negative. 
+                Taller green bars on a given day = more satisfied commuters that day.
+                </div>
+                """, unsafe_allow_html=True)
+                
                 df_s = df[df[sent_col].isin(["POSITIVE", "NEUTRAL", "NEGATIVE"])].copy()
                 if not df_s.empty:
                     df_s["date"] = df_s["created_at"].dt.date
                     sent_daily = df_s.groupby(["date", sent_col]).size().reset_index(name="Count")
-                    st.altair_chart(
+                    
+                    # Use count bars (not normalized) so absolute numbers are visible
+                    sent_chart = (
                         alt.Chart(sent_daily)
-                        .mark_bar()
+                        .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, opacity=0.9)
                         .encode(
-                            x=alt.X("date:T", axis=alt.Axis(format="%b %d")),
-                            y=alt.Y("Count:Q", stack="normalize", axis=alt.Axis(format="%")),
+                            x=alt.X("date:T", axis=alt.Axis(format="%b %d", title="Date", labelAngle=-30)),
+                            y=alt.Y("Count:Q", title="Number of Responses", stack=True),
                             color=alt.Color(
                                 f"{sent_col}:N",
                                 scale=alt.Scale(
                                     domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
                                     range=["#4a7c59", "#8b9dc3", "#b03a2e"],
                                 ),
-                                legend=alt.Legend(title="Sentiment"),
+                                legend=alt.Legend(title="Sentiment", orient="top"),
                             ),
-                            tooltip=["date:T", f"{sent_col}:N", "Count:Q"],
+                            tooltip=[
+                                alt.Tooltip("date:T", title="Date", format="%B %d, %Y"),
+                                alt.Tooltip(f"{sent_col}:N", title="Sentiment"),
+                                alt.Tooltip("Count:Q", title="Responses"),
+                            ],
                         )
-                        .properties(height=220),
-                        use_container_width=True,
+                        .properties(height=240)
                     )
-
+                    st.altair_chart(sent_chart, use_container_width=True)
+                    
+                    # Auto-generated insight below chart
+                    total_sent = len(df_s)
+                    pos_pct = (df_s[sent_col]=="POSITIVE").sum() / total_sent * 100 if total_sent else 0
+                    neg_pct = (df_s[sent_col]=="NEGATIVE").sum() / total_sent * 100 if total_sent else 0
+                    insight_color = "#4a7c59" if pos_pct >= 60 else "#8b9dc3" if pos_pct >= 40 else "#b03a2e"
+                    insight_msg = (
+                        f"Majority of responses ({pos_pct:.0f}%) are positive — commuters are generally satisfied."
+                        if pos_pct >= 60 else
+                        f"Mixed sentiment detected. {pos_pct:.0f}% positive, {neg_pct:.0f}% negative — monitor closely."
+                        if pos_pct >= 40 else
+                        f"High negativity ({neg_pct:.0f}%) detected. Immediate service review recommended."
+                    )
+                    st.markdown(f"""
+                    <div style="background:{'rgba(74,124,89,0.08)' if pos_pct>=60 else 'rgba(139,157,195,0.08)' if pos_pct>=40 else 'rgba(176,58,46,0.08)'};
+                                border:1px solid {'rgba(74,124,89,0.25)' if pos_pct>=60 else 'rgba(139,157,195,0.25)' if pos_pct>=40 else 'rgba(176,58,46,0.25)'};
+                                border-radius:8px;padding:.6rem 1rem;margin-top:.4rem;font-size:.76rem;color:{insight_color};font-weight:600;">
+                    💡 {insight_msg}
+                    </div>
+                    """, unsafe_allow_html=True)
     # ─────────────────────────────────
     # TAB 3 — SENTIMENT
     # FIX #11: Feedback log splits the "|" separator so each answer
@@ -732,6 +807,17 @@ def render_dashboard():
                             "NEUTRAL":  "color:#8b9dc3;font-weight:700",
                         }.get(val, "")
 
+                    # Add before st.dataframe(pd.DataFrame(summary_rows), ...):
+                    st.markdown("""
+                    <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
+                                border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
+                    📌 <strong>How to read this:</strong> Scores are on a 1–5 scale. 
+                    <strong style="color:#4a7c59;">4.0+</strong> = Good · 
+                    <strong style="color:#8b9dc3;">3.0–3.9</strong> = Fair · 
+                    <strong style="color:#b03a2e;">Below 3.0</strong> = Needs Improvement
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
                     st.dataframe(
                         log_df.style.map(color_sent, subset=["Sentiment"]),
                         use_container_width=True,
