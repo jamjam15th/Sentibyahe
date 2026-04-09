@@ -666,7 +666,7 @@ def render_dashboard():
                 <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
                             border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
                 📌 <strong>How to read this:</strong> Each bar represents one day. 
-                Green = positive feedback, blue-gray = neutral, red = negative. 
+                Green = positive feedback, gray = neutral, red = negative. 
                 Taller green bars on a given day = more satisfied commuters that day.
                 </div>
                 """, unsafe_allow_html=True)
@@ -701,25 +701,6 @@ def render_dashboard():
                     )
                     st.altair_chart(sent_chart, use_container_width=True)
                     
-                    # Auto-generated insight below chart
-                    total_sent = len(df_s)
-                    pos_pct = (df_s[sent_col]=="POSITIVE").sum() / total_sent * 100 if total_sent else 0
-                    neg_pct = (df_s[sent_col]=="NEGATIVE").sum() / total_sent * 100 if total_sent else 0
-                    insight_color = "#4a7c59" if pos_pct >= 60 else "#8b9dc3" if pos_pct >= 40 else "#b03a2e"
-                    insight_msg = (
-                        f"Majority of responses ({pos_pct:.0f}%) are positive — commuters are generally satisfied."
-                        if pos_pct >= 60 else
-                        f"Mixed sentiment detected. {pos_pct:.0f}% positive, {neg_pct:.0f}% negative — monitor closely."
-                        if pos_pct >= 40 else
-                        f"High negativity ({neg_pct:.0f}%) detected. Immediate service review recommended."
-                    )
-                    st.markdown(f"""
-                    <div style="background:{'rgba(74,124,89,0.08)' if pos_pct>=60 else 'rgba(139,157,195,0.08)' if pos_pct>=40 else 'rgba(176,58,46,0.08)'};
-                                border:1px solid {'rgba(74,124,89,0.25)' if pos_pct>=60 else 'rgba(139,157,195,0.25)' if pos_pct>=40 else 'rgba(176,58,46,0.25)'};
-                                border-radius:8px;padding:.6rem 1rem;margin-top:.4rem;font-size:.76rem;color:{insight_color};font-weight:600;">
-                    💡 {insight_msg}
-                    </div>
-                    """, unsafe_allow_html=True)
     # ─────────────────────────────────
     # TAB 3 — SENTIMENT
     # FIX #11: Feedback log splits the "|" separator so each answer
@@ -807,16 +788,6 @@ def render_dashboard():
                             "NEUTRAL":  "color:#8b9dc3;font-weight:700",
                         }.get(val, "")
 
-                    # Add before st.dataframe(pd.DataFrame(summary_rows), ...):
-                    st.markdown("""
-                    <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
-                                border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
-                    📌 <strong>How to read this:</strong> Scores are on a 1–5 scale. 
-                    <strong style="color:#4a7c59;">4.0+</strong> = Good · 
-                    <strong style="color:#8b9dc3;">3.0–3.9</strong> = Fair · 
-                    <strong style="color:#b03a2e;">Below 3.0</strong> = Needs Improvement
-                    </div>
-                    """, unsafe_allow_html=True)
                     
                     st.dataframe(
                         log_df.style.map(color_sent, subset=["Sentiment"]),
@@ -891,6 +862,17 @@ def render_dashboard():
                         "Max": f"{df[v].max():.2f}",
                         "Responses": int(df[v].notna().sum()),
                     })
+                    
+                    # Add before st.dataframe(pd.DataFrame(summary_rows), ...):
+            st.markdown("""
+            <div style="background:rgba(26,50,99,0.04);border-left:3px solid rgb(26,50,99);
+                        border-radius:0 6px 6px 0;padding:.5rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:rgb(84,119,146);">
+            📌 <strong>How to read this:</strong> Scores are on a 1–5 scale. 
+            <strong style="color:#4a7c59;">4.0+</strong> = Good · 
+            <strong style="color:#8b9dc3;">3.0–3.9</strong> = Fair · 
+            <strong style="color:#b03a2e;">Below 3.0</strong> = Needs Improvement
+            </div>
+            """, unsafe_allow_html=True)
             st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────
