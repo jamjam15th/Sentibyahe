@@ -4,7 +4,6 @@ import altair as alt
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
-import plotly.graph_objects as go
 
 def normalize_to_5(score, scale_max):
     if pd.isna(score):
@@ -328,39 +327,20 @@ def render_dashboard():
 
     overall_avg = 0.0
     if has_servqual_data:
-        # Use normalized_df only if you want normalization; otherwise use df directly
-        radar_df = df[present_servqual_dims.values()].mean().rename(
-            {v: k for k, v in present_servqual_dims.items()}
-        )
+        df['overall_servqual'] = df[list(present_servqual_dims.values())].mean(axis=1)
+        normalized_df = df.copy()
 
-        fig = go.Figure(
-            data=go.Scatterpolar(
-                r=radar_df.values,
-                theta=radar_df.index,
-                fill='toself',
-                name='Average SERVQUAL'
-            )
-        )
+        scale_max = df[list(present_servqual_dims.values())].max().max()
+        if pd.isna(scale_max) or scale_max == 0:
+            scale_max = 5
 
-        fig.update_layout(
-            polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0,5],
-                    tickvals=[1,2,3,4,5],
-                    ticktext=["1","2","3","4","5"],
-                )
-            ),
-            showlegend=False,
-            margin=dict(t=20,b=20,l=20,r=20)
-        )
+        for col in present_servqual_dims.values():
+            normalized_df[col] = normalized_df[col].apply(lambda x: normalize_to_5(x, scale_max))
 
-        st.markdown('<div class="section-head">🧭 SERVQUAL Radar Overview</div>', unsafe_allow_html=True)
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown("""
-        *Each axis represents a SERVQUAL dimension. The values are averages based on a 1–5 Likert scale. 
-        A fuller shape indicates higher satisfaction across dimensions.*
-        """)
+        overall_avg = normalized_df[list(present_servqual_dims.values())].mean().mean()
+        if pd.isna(overall_avg):
+            overall_avg = 0.0
+
     else: 
         df['overall_servqual'] = None
     has_any_rating_data = has_servqual_data or has_general_ratings
