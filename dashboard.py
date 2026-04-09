@@ -4,6 +4,7 @@ import altair as alt
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
+import plotly.express as px
 
 def normalize_to_5(score, scale_max):
     if pd.isna(score):
@@ -327,6 +328,7 @@ def render_dashboard():
 
     overall_avg = 0.0
     if has_servqual_data:
+        df['overall_servqual'] = df[list(present_servqual_dims.values())].mean(axis=1)
         normalized_df = df.copy()
 
         scale_max = df[list(present_servqual_dims.values())].max().max()
@@ -339,6 +341,9 @@ def render_dashboard():
         overall_avg = normalized_df[list(present_servqual_dims.values())].mean().mean()
         if pd.isna(overall_avg):
             overall_avg = 0.0
+
+    else: 
+        df['overall_servqual'] = None
 
     has_any_rating_data = has_servqual_data or has_general_ratings
 
@@ -429,6 +434,26 @@ def render_dashboard():
       <div class="kpi-value">{total - pending_n}<span style="font-size:1rem"> analyzed</span></div>
       <div class="kpi-pending">⏳ {pending_n} pending</div>
     </div>""", unsafe_allow_html=True)
+
+    if not scatter_df.empty:
+    fig = px.scatter(
+        scatter_df,
+        x='overall_servqual',
+        y='sentiment_score',
+        color='sentiment_status',
+        labels={
+            'overall_servqual': 'Overall SERVQUAL (1–5)',
+            'sentiment_score': 'Sentiment Confidence'
+        },
+        title='SERVQUAL vs Feedback Sentiment',
+        color_discrete_map={
+            'POSITIVE': 'green',
+            'NEUTRAL': 'orange',
+            'NEGATIVE': 'red'
+        },
+        hover_data=['raw_feedback']
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
     # ══════════════════════════════════
