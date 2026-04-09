@@ -328,8 +328,8 @@ def render_dashboard():
 
     overall_avg = 0.0
     if has_servqual_data:
-        # Compute average per dimension (normalized)
-        radar_df = normalized_df[list(present_servqual_dims.values())].mean().rename(
+        # Use normalized_df only if you want normalization; otherwise use df directly
+        radar_df = df[present_servqual_dims.values()].mean().rename(
             {v: k for k, v in present_servqual_dims.items()}
         )
 
@@ -346,10 +346,9 @@ def render_dashboard():
             polar=dict(
                 radialaxis=dict(
                     visible=True,
-                    range=[0,5],  # Likert scale 1-5
+                    range=[0,5],
                     tickvals=[1,2,3,4,5],
                     ticktext=["1","2","3","4","5"],
-                    tickangle=45
                 )
             ),
             showlegend=False,
@@ -359,10 +358,9 @@ def render_dashboard():
         st.markdown('<div class="section-head">🧭 SERVQUAL Radar Overview</div>', unsafe_allow_html=True)
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("""
-        *Each axis represents a SERVQUAL dimension. The values are normalized averages based on a 1–5 Likert scale. 
+        *Each axis represents a SERVQUAL dimension. The values are averages based on a 1–5 Likert scale. 
         A fuller shape indicates higher satisfaction across dimensions.*
         """)
-
     else: 
         df['overall_servqual'] = None
     has_any_rating_data = has_servqual_data or has_general_ratings
