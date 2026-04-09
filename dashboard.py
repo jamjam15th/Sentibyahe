@@ -4,6 +4,7 @@ import altair as alt
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
+import plotly.graph_objects as go
 
 def normalize_to_5(score, scale_max):
     if pd.isna(score):
@@ -327,19 +328,40 @@ def render_dashboard():
 
     overall_avg = 0.0
     if has_servqual_data:
-        df['overall_servqual'] = df[list(present_servqual_dims.values())].mean(axis=1)
-        normalized_df = df.copy()
+        # Compute average per dimension (normalized)
+        radar_df = normalized_df[list(present_servqual_dims.values())].mean().rename(
+            {v: k for k, v in present_servqual_dims.items()}
+        )
 
-        scale_max = df[list(present_servqual_dims.values())].max().max()
-        if pd.isna(scale_max) or scale_max == 0:
-            scale_max = 5
+        fig = go.Figure(
+            data=go.Scatterpolar(
+                r=radar_df.values,
+                theta=radar_df.index,
+                fill='toself',
+                name='Average SERVQUAL'
+            )
+        )
 
-        for col in present_servqual_dims.values():
-            normalized_df[col] = normalized_df[col].apply(lambda x: normalize_to_5(x, scale_max))
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0,5],  # Likert scale 1-5
+                    tickvals=[1,2,3,4,5],
+                    ticktext=["1","2","3","4","5"],
+                    tickangle=45
+                )
+            ),
+            showlegend=False,
+            margin=dict(t=20,b=20,l=20,r=20)
+        )
 
-        overall_avg = normalized_df[list(present_servqual_dims.values())].mean().mean()
-        if pd.isna(overall_avg):
-            overall_avg = 0.0
+        st.markdown('<div class="section-head">🧭 SERVQUAL Radar Overview</div>', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("""
+        *Each axis represents a SERVQUAL dimension. The values are normalized averages based on a 1–5 Likert scale. 
+        A fuller shape indicates higher satisfaction across dimensions.*
+        """)
 
     else: 
         df['overall_servqual'] = None
