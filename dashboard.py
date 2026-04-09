@@ -2,11 +2,14 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import plotly.graph_objects as go
+import re
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
 
 def normalize_to_5(score, scale_max):
     if pd.isna(score):
+        return score
+    if scale_max <= 5:
         return score
     return (score / scale_max) * 5
 
@@ -14,7 +17,7 @@ def normalize_to_5(score, scale_max):
 # PAGE CONFIG
 # ══════════════════════════════════════════
 st.set_page_config(
-    page_title="PUV Sentiment Dashboard",
+    page_title="Land Public Transport Sentiment Dashboard",
     page_icon="📊",
     layout="wide",
 )
@@ -247,6 +250,31 @@ def fetch_dashboard_data(email: str) -> pd.DataFrame:
         st.warning(f"Could not load responses: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=120)
+def fetch_question_scale_map(email: str) -> dict:
+    """Return latest scale_max per question prompt from form schema."""
+    try:
+        r = (conn.client.table("form_questions")
+             .select("prompt, scale_max")
+             .eq("admin_email", email)
+             .execute())
+        rows = r.data or []
+        scale_map = {}
+        for row in rows:
+            prompt = row.get("prompt")
+            scale_max = row.get("scale_max")
+            if not prompt:
+                continue
+            if scale_max is None:
+                continue
+            try:
+                scale_map[prompt] = int(scale_max)
+            except Exception:
+                pass
+        return scale_map
+    except Exception:
+        return {}
+
 def persist_sentiment_batch(rows: list[dict]):
     if not rows:
         return
@@ -262,7 +290,7 @@ st.markdown("""
 <div class="dash-header">
   <div>
     <h1>📊 Sentiment Dashboard</h1>
-    <p class="sub">PUV Commuter Experience · SERVQUAL Analysis</p>
+    <p class="sub">Land Public Transportation Experience · SERVQUAL Analysis</p>
   </div>
   <div class="live-badge"><span class="live-dot"></span> LIVE SYNC</div>
 </div>
@@ -281,6 +309,7 @@ with cd2:
 @st.fragment(run_every=30)
 def render_dashboard():
     df_raw = fetch_dashboard_data(admin_email)
+    question_scale_map = fetch_question_scale_map(admin_email)
 
     if df_raw.empty:
         st.markdown("""
@@ -330,9 +359,12 @@ def render_dashboard():
         df['overall_servqual'] = df[list(present_servqual_dims.values())].mean(axis=1)
         normalized_df = df.copy()
 
-        scale_max = df[list(present_servqual_dims.values())].max().max()
-        if pd.isna(scale_max) or scale_max == 0:
+        observed_max = df[list(present_servqual_dims.values())].max().max()
+        if pd.isna(observed_max) or observed_max <= 0:
             scale_max = 5
+        else:
+            # Any Likert scale above 5 is normalized down to a 1-5 scale.
+            scale_max = float(observed_max) if observed_max > 5 else 5
 
         for col in present_servqual_dims.values():
             normalized_df[col] = normalized_df[col].apply(lambda x: normalize_to_5(x, scale_max))
@@ -379,8 +411,6 @@ def render_dashboard():
         else pd.Series(False, index=df.index)
     )
     df_sent   = df[sent_valid].copy() if sent_col in df.columns else pd.DataFrame()
-    pending_n = int((df[sent_col] == "pending").sum()) if sent_col in df.columns else 0
-
     total     = len(df)
     pos_count = int((df_sent[sent_col] == "POSITIVE").sum()) if not df_sent.empty else 0
     pos_rate  = (pos_count / len(df_sent) * 100) if len(df_sent) > 0 else 0
@@ -395,7 +425,7 @@ def render_dashboard():
     # ══════════════════════════════════
     # KPI RIBBON
     # ══════════════════════════════════
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4 = st.columns(4)
 
     k1.markdown(f"""<div class="kpi-card">
       <div class="kpi-title">Total Responses</div>
@@ -427,13 +457,6 @@ def render_dashboard():
       <div class="conf-bar-wrap"><div class="conf-bar" style="width:{avg_conf*100:.1f}%"></div></div>
     </div>""", unsafe_allow_html=True)
 
-    k5.markdown(f"""<div class="kpi-card">
-      <div class="kpi-title">Analysis Queue</div>
-      <div class="kpi-value">{total - pending_n}<span style="font-size:1rem"> analyzed</span></div>
-      <div class="kpi-pending">⏳ {pending_n} pending</div>
-    </div>""", unsafe_allow_html=True)
-
-
     # ══════════════════════════════════
     # TABS
     # ══════════════════════════════════
@@ -451,6 +474,25 @@ def render_dashboard():
     # It appears as a separate bar below the radar.
     # ─────────────────────────────────
     with tab1:
+        st.markdown("""
+        <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                    border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+          <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+            SERVQUAL Guide (Likert Scale Only)
+          </div>
+          <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+            This radar is computed only from <strong>Likert-scale question averages</strong> tagged to SERVQUAL dimensions
+            (Tangibles, Reliability, Responsiveness, Assurance, Empathy).<br>
+            <strong>Scale conversion:</strong> any Likert scale with values above <strong>5</strong>
+            is automatically normalized to a <strong>1 to 5</strong> scale first for consistent SERVQUAL computation.<br>
+            <strong>How to read:</strong> each spoke is one dimension, and scores are on a <strong>1 to 5 scale</strong>;
+            farther from the center means better service quality.<br>
+            <strong>How to use:</strong> use this chart as a quick view of what response data is currently available
+            about <strong>public land transportation service quality</strong> across SERVQUAL dimensions.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if not has_servqual_data:
             # FIX #10: More helpful empty state message
             st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
@@ -473,102 +515,44 @@ def render_dashboard():
             col_r1, col_r2 = st.columns([3, 2])
             with col_r1:
                 st.markdown('<div class="section-head">SERVQUAL Dimension Averages</div>', unsafe_allow_html=True)
-                if len(labels) >= 3:
-                    v_closed = values + [values[0]]
-                    l_closed = labels + [labels[0]]
-                    target_score = 4  # benchmark (good service level)
+                v_closed = values + [values[0]]
+                l_closed = labels + [labels[0]]
 
-                    v_closed = values + [values[0]]
-                    l_closed = labels + [labels[0]]
+                fig = go.Figure()
 
-                    fig = go.Figure()
+                # SERVQUAL-only radar polygon
+                fig.add_trace(go.Scatterpolar(
+                    r=v_closed,
+                    theta=l_closed,
+                    fill="toself",
+                    fillcolor="rgba(26,50,99,0.25)",
+                    line=dict(color="rgb(26,50,99)", width=3),
+                    marker=dict(size=8, color="#ffc570"),
+                    showlegend=False,
+                ))
 
-                    # 🎯 ACTUAL DATA
-                    fig.add_trace(go.Scatterpolar(
-                        r=v_closed,
-                        theta=l_closed,
-                        fill="toself",
-                        name="Actual Score",
-                        fillcolor="rgba(26,50,99,0.25)",
-                        line=dict(color="rgb(26,50,99)", width=3),
-                        marker=dict(size=8, color="#ffc570"),
-                    ))
-
-                    # 📏 BENCHMARK LINE
-                    fig.add_trace(go.Scatterpolar(
-                        r=[target_score]*len(l_closed),
-                        theta=l_closed,
-                        name="Target (4.0)",
-                        line=dict(color="rgba(176,58,46,0.7)", dash="dash"),
-                    ))
-
-                    fig.update_layout(
-                        polar=dict(
-                            bgcolor="rgba(0,0,0,0)",
-                            radialaxis=dict(
-                                visible=True,
-                                range=[0, 5],
-                                tickvals=[1,2,3,4,5],
-                                tickfont=dict(size=10, color="rgb(120,148,172)"),
-                                gridcolor="rgba(84,119,146,0.2)",
-                            ),
-                            angularaxis=dict(
-                                tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
-                            ),
+                fig.update_layout(
+                    polar=dict(
+                        bgcolor="rgba(0,0,0,0)",
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0, 5],
+                            tickvals=[1, 2, 3, 4, 5],
+                            tickfont=dict(size=10, color="rgb(120,148,172)"),
+                            gridcolor="rgba(84,119,146,0.2)",
+                            linecolor="rgba(84,119,146,0.2)",
                         ),
-                        showlegend=True,
-                        legend=dict(
-                            orientation="h",
-                            y=-0.2
+                        angularaxis=dict(
+                            tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
+                            gridcolor="rgba(84,119,146,0.15)",
                         ),
-                        margin=dict(t=40, b=40, l=60, r=60),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        height=360,
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
-                    fig.update_layout(
-                        polar=dict(
-                            bgcolor="rgba(0,0,0,0)",
-                            radialaxis=dict(
-                                visible=True, range=[0, 5],
-                                tickfont=dict(size=10, color="rgb(120,148,172)"),
-                                gridcolor="rgba(84,119,146,0.2)",
-                                linecolor="rgba(84,119,146,0.2)",
-                            ),
-                            angularaxis=dict(
-                                tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
-                                gridcolor="rgba(84,119,146,0.15)",
-                            ),
-                        ),
-                        showlegend=False,
-                        margin=dict(t=30, b=30, l=60, r=60),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        height=340,
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    bar_data = pd.DataFrame({"Dimension": labels, "Score": values})
-                    # FIX #2: domain/range scoped to actual present dims only
-                    pal = scoped_palette(labels)
-                    bar = (
-                        alt.Chart(bar_data)
-                        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                        .encode(
-                            x=alt.X("Dimension:N", axis=alt.Axis(labelAngle=0)),
-                            y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 5])),
-                            color=alt.Color(
-                                "Dimension:N",
-                                scale=alt.Scale(
-                                    domain=list(pal.keys()),
-                                    range=list(pal.values()),
-                                ),
-                                legend=None,
-                            ),
-                        )
-                        .properties(height=300)
-                    )
-                    st.altair_chart(bar, use_container_width=True)
+                    ),
+                    showlegend=False,
+                    margin=dict(t=40, b=40, l=60, r=60),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    height=360,
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
             with col_r2:
                 st.markdown('<div class="section-head">Dimension Scores</div>', unsafe_allow_html=True)
@@ -618,76 +602,100 @@ def render_dashboard():
     # FIX #7: Safe column rename using dict mapping instead of positional rename
     # ─────────────────────────────────
     with tab2:
-        if "created_at" not in df.columns or not has_any_rating_data:
-            # FIX #10: Clearer empty message
+        if "created_at" not in df.columns:
             st.markdown("""<div class="empty-tab"><div class="icon">📈</div>
-              <p>Trend data requires timestamps and at least one Likert question.<br>
-              Assign SERVQUAL dimensions in Form Builder to start seeing trends.</p>
+              <p>Response trend chart requires timestamps.<br>
+              Submit responses first to see daily counts.</p>
             </div>""", unsafe_allow_html=True)
         else:
-            st.markdown('<div class="section-head">Dimension Scores Over Time</div>', unsafe_allow_html=True)
-            df_trend = df.copy()
-            df_trend["date"] = df_trend["created_at"].dt.date
+            st.markdown("""
+            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+                Responses Per Day Guide
+              </div>
+              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+                This tab shows <strong>how many survey responses are submitted each day</strong> within your selected date range.<br>
+                <strong>Bars and line</strong> represent daily response count (including days with zero responses for continuity).<br>
+                Use this view to quickly identify <strong>peak days</strong>, <strong>low-activity days</strong>, and overall response activity trend.
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            # FIX #7: Use dict-based rename — safe when columns are missing/null
-            dim_val_cols = [v for v in all_dim_cols.values() if v in df_trend.columns]
-            daily = (
-                df_trend.groupby("date")[dim_val_cols]
-                .mean()
+            st.markdown('<div class="section-head">Responses Per Day</div>', unsafe_allow_html=True)
+            daily_responses = (
+                df.assign(date=df["created_at"].dt.date)
+                .groupby("date")
+                .size()
+                .reset_index(name="Responses")
+            )
+            daily_responses["date"] = pd.to_datetime(daily_responses["date"])
+            daily_responses = daily_responses.sort_values("date")
+
+            # Keep timeline continuous by filling missing dates with zero responses.
+            full_dates = pd.date_range(
+                start=daily_responses["date"].min(),
+                end=daily_responses["date"].max(),
+                freq="D",
+            )
+            daily_responses = (
+                daily_responses.set_index("date")
+                .reindex(full_dates, fill_value=0)
+                .rename_axis("date")
                 .reset_index()
             )
-            # Rename col values back to dimension names safely
-            rename_map = {v: k for k, v in all_dim_cols.items()}
-            daily = daily.rename(columns=rename_map)
 
-            daily_long = daily.melt("date", var_name="Dimension", value_name="Score")
-            daily_long = daily_long.dropna(subset=["Score"])  # drop fully-null dims
+            if daily_responses.empty:
+                st.info("No responses available for the selected date range.")
+            else:
+                peak_row = daily_responses.loc[daily_responses["Responses"].idxmax()]
 
-            pal = scoped_palette(daily_long["Dimension"].unique().tolist())
-            trend_chart = (
-                alt.Chart(daily_long)
-                .mark_line(point=True, strokeWidth=2)
-                .encode(
-                    x=alt.X("date:T", axis=alt.Axis(format="%b %d", title="Date")),
-                    y=alt.Y("Score:Q", scale=alt.Scale(domain=[1, 5]), title="Avg Score"),
-                    color=alt.Color(
-                        "Dimension:N",
-                        scale=alt.Scale(
-                            domain=list(pal.keys()),
-                            range=list(pal.values()),
+                c2, c3 = st.columns(2)
+                c2.markdown(f"""<div class="kpi-card">
+                  <div class="kpi-title">Peak Day</div>
+                  <div class="kpi-value pos">{int(peak_row["Responses"])}</div>
+                  <div class="kpi-sub">{peak_row["date"].strftime("%b %d, %Y")}</div>
+                </div>""", unsafe_allow_html=True)
+                c3.markdown(f"""<div class="kpi-card">
+                  <div class="kpi-title">Total Responses (Range)</div>
+                  <div class="kpi-value gold">{int(daily_responses["Responses"].sum())}</div>
+                  <div class="kpi-sub">Daily trend view</div>
+                </div>""", unsafe_allow_html=True)
+
+                responses_chart = (
+                    alt.Chart(daily_responses)
+                    .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, color="#1a3263")
+                    .encode(
+                        x=alt.X(
+                            "date:T",
+                            axis=alt.Axis(format="%b %d", title="Date", labelAngle=-25),
                         ),
-                    ),
-                    tooltip=["date:T", "Dimension:N", alt.Tooltip("Score:Q", format=".2f")],
-                )
-                .properties(height=300)
-            )
-            st.altair_chart(trend_chart, use_container_width=True)
-
-            if sent_col in df.columns:
-                st.markdown('<div class="section-head">Daily Sentiment Distribution</div>', unsafe_allow_html=True)
-                df_s = df[df[sent_col].isin(["POSITIVE", "NEUTRAL", "NEGATIVE"])].copy()
-                if not df_s.empty:
-                    df_s["date"] = df_s["created_at"].dt.date
-                    sent_daily = df_s.groupby(["date", sent_col]).size().reset_index(name="Count")
-                    st.altair_chart(
-                        alt.Chart(sent_daily)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X("date:T", axis=alt.Axis(format="%b %d")),
-                            y=alt.Y("Count:Q", stack="normalize", axis=alt.Axis(format="%")),
-                            color=alt.Color(
-                                f"{sent_col}:N",
-                                scale=alt.Scale(
-                                    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
-                                    range=["#4a7c59", "#8b9dc3", "#b03a2e"],
-                                ),
-                                legend=alt.Legend(title="Sentiment"),
-                            ),
-                            tooltip=["date:T", f"{sent_col}:N", "Count:Q"],
-                        )
-                        .properties(height=220),
-                        use_container_width=True,
+                        y=alt.Y(
+                            "Responses:Q",
+                            title="Number of Responses",
+                            axis=alt.Axis(format=".0f", tickMinStep=1),
+                            scale=alt.Scale(domainMin=0, nice=True),
+                        ),
+                        tooltip=[
+                            alt.Tooltip("date:T", title="Date", format="%b %d, %Y"),
+                            alt.Tooltip("Responses:Q", title="Responses", format=",.0f"),
+                        ],
                     )
+                    .properties(height=320)
+                )
+                trend_line = (
+                    alt.Chart(daily_responses)
+                    .mark_line(color="#ffc570", strokeWidth=2.5, point=True)
+                    .encode(
+                        x="date:T",
+                        y="Responses:Q",
+                        tooltip=[
+                            alt.Tooltip("date:T", title="Date", format="%b %d, %Y"),
+                            alt.Tooltip("Responses:Q", title="Responses", format=",.0f"),
+                        ],
+                    )
+                )
+                st.altair_chart(responses_chart + trend_line, use_container_width=True)
 
     # ─────────────────────────────────
     # TAB 3 — SENTIMENT
@@ -748,19 +756,38 @@ def render_dashboard():
             with c2:
                 st.markdown('<div class="section-head">Feedback Log</div>', unsafe_allow_html=True)
 
-                # FIX #11: Explode the "|"-joined raw_feedback so each answer
-                # gets its own row — far easier to read and interpret.
+                # Show sentiment-related Q&A pairs for clearer traceability.
+                demo_question_set = {
+                    "What is your age bracket?",
+                    "What is your gender?",
+                    "What is your primary occupation?",
+                    "What primary PUV type do you usually ride?",
+                    "How often do you commute?",
+                }
                 log_rows = []
                 for _, row in df_sent.iterrows():
-                    raw = str(row.get("raw_feedback", "") or "")
-                    answers = [a.strip() for a in raw.split("|") if a.strip()]
+                    ans_map = row.get("answers", {})
                     sentiment  = row.get(sent_col, "")
                     confidence = row.get("sentiment_score", None)
                     submitted  = row.get("created_at", None)
-                    for idx, answer in enumerate(answers, 1):
+                    if not isinstance(ans_map, dict):
+                        continue
+
+                    idx = 0
+                    for question, answer in ans_map.items():
+                        answer_text = str(answer).strip() if answer is not None else ""
+                        if not answer_text:
+                            continue
+                        if question in demo_question_set:
+                            continue
+                        # Skip numeric-only answers (typically Likert); keep open-text answers.
+                        if pd.notna(pd.to_numeric(answer_text, errors="coerce")):
+                            continue
+                        idx += 1
                         log_rows.append({
-                            "Response #": f"#{answers.index(answer)+1 if answers else 1}",
-                            "Answer": answer,
+                            "Response #": f"#{idx}",
+                            "Question": str(question),
+                            "Answer": answer_text,
                             "Sentiment": sentiment,
                             "Confidence": f"{confidence*100:.1f}%" if pd.notna(confidence) else "Pending",
                             "Submitted": submitted,
@@ -798,58 +825,170 @@ def render_dashboard():
               (they appear as General Ratings) in Form Builder.</p>
             </div>""", unsafe_allow_html=True)
         else:
+            st.markdown("""
+            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+                Quantitative Guide
+              </div>
+              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+                This tab summarizes numeric (Likert) results and helps you see where scores are high/low.<br><br>
+                <strong>Score by Selected Context:</strong> compares average scores per dimension using any available land public transportation category
+                (example: vehicle used, commute frequency, or other collected profile/context fields).<br>
+                <strong>How to use:</strong> choose a grouping field, then compare which groups rate lower/higher per dimension.<br><br>
+                <strong>Top and Bottom Questions:</strong> highlights highest and lowest scoring Likert questions.<br>
+                <strong>How to use:</strong> quickly identify strongest and weakest service aspects.<br><br>
+                <strong>Likert Response Log:</strong> raw per-question numeric responses with submission time.<br>
+                <strong>How to use:</strong> verify actual recorded answers, review specific questions, and trace unusual values.
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             if "demo_answers" in df.columns:
-                puv_key = "What primary PUV type do you usually ride?"
-                df["puv_type"] = df["demo_answers"].apply(
-                    lambda x: x.get(puv_key) if isinstance(x, dict) else None
-                )
-                df_puv = df.dropna(subset=["puv_type"])
+                context_keys = sorted({
+                    k
+                    for ans in df["demo_answers"].dropna()
+                    if isinstance(ans, dict)
+                    for k in ans.keys()
+                })
+                usable_context_keys = []
+                for key in context_keys:
+                    vals = df["demo_answers"].apply(
+                        lambda x: x.get(key) if isinstance(x, dict) else None
+                    )
+                    if vals.dropna().nunique() >= 2:
+                        usable_context_keys.append(key)
 
-                if not df_puv.empty:
-                    st.markdown('<div class="section-head">Score by PUV Type</div>', unsafe_allow_html=True)
-                    avail_cols = [v for v in all_dim_cols.values() if v in df_puv.columns]
-                    puv_agg  = df_puv.groupby("puv_type")[avail_cols].mean().reset_index()
-                    puv_long = puv_agg.melt("puv_type", var_name="dim_col", value_name="Score")
-                    inv_map  = {v: k for k, v in all_dim_cols.items()}
-                    puv_long["Dimension"] = puv_long["dim_col"].map(inv_map)
-                    # FIX #3: drop rows where dimension mapping returned None
-                    puv_long = puv_long.dropna(subset=["Dimension", "Score"])
+                if usable_context_keys:
+                    st.markdown('<div class="section-head">Score by Selected Context</div>', unsafe_allow_html=True)
+                    selected_context = st.selectbox(
+                        "Group scores by",
+                        options=usable_context_keys,
+                        key="quant_context_group",
+                    )
+                    df["context_group"] = df["demo_answers"].apply(
+                        lambda x: x.get(selected_context) if isinstance(x, dict) else None
+                    )
+                    df_grouped = df.dropna(subset=["context_group"])
+                    avail_cols = [v for v in all_dim_cols.values() if v in df_grouped.columns]
 
-                    if not puv_long.empty:
-                        pal = scoped_palette(puv_long["Dimension"].unique().tolist())
-                        st.altair_chart(
-                            alt.Chart(puv_long)
-                            .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
-                            .encode(
-                                x=alt.X("puv_type:N", axis=alt.Axis(labelAngle=-20), title="PUV Type"),
-                                y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 5])),
-                                color=alt.Color(
-                                    "Dimension:N",
-                                    scale=alt.Scale(
-                                        domain=list(pal.keys()),
-                                        range=list(pal.values()),
+                    if not df_grouped.empty and avail_cols:
+                        grp_agg = df_grouped.groupby("context_group")[avail_cols].mean().reset_index()
+                        grp_long = grp_agg.melt("context_group", var_name="dim_col", value_name="Score")
+                        inv_map = {v: k for k, v in all_dim_cols.items()}
+                        grp_long["Dimension"] = grp_long["dim_col"].map(inv_map)
+                        grp_long = grp_long.dropna(subset=["Dimension", "Score"])
+
+                        if not grp_long.empty:
+                            pal = scoped_palette(grp_long["Dimension"].unique().tolist())
+                            st.altair_chart(
+                                alt.Chart(grp_long)
+                                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+                                .encode(
+                                    x=alt.X("context_group:N", axis=alt.Axis(labelAngle=-20), title="Group"),
+                                    y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 5])),
+                                    color=alt.Color(
+                                        "Dimension:N",
+                                        scale=alt.Scale(
+                                            domain=list(pal.keys()),
+                                            range=list(pal.values()),
+                                        ),
                                     ),
-                                ),
-                                xOffset="Dimension:N",
-                                tooltip=["puv_type:N", "Dimension:N", alt.Tooltip("Score:Q", format=".2f")],
+                                    xOffset="Dimension:N",
+                                    tooltip=["context_group:N", "Dimension:N", alt.Tooltip("Score:Q", format=".2f")],
+                                )
+                                .properties(height=280),
+                                use_container_width=True,
                             )
-                            .properties(height=280),
-                            use_container_width=True,
-                        )
 
-            st.markdown('<div class="section-head">All Rating Averages</div>', unsafe_allow_html=True)
-            summary_rows = []
-            for k, v in all_dim_cols.items():
-                if v in df.columns and df[v].notna().any():
-                    summary_rows.append({
-                        "Dimension": k,
-                        "Type": "SERVQUAL" if k != "General Ratings" else "General",
-                        "Average": f"{normalized_df[v].mean():.2f}",
-                        "Min": f"{df[v].min():.2f}",
-                        "Max": f"{df[v].max():.2f}",
-                        "Responses": int(df[v].notna().sum()),
+            st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
+            likert_rows = []
+            for _, row in df.iterrows():
+                ans_map = row.get("answers", {})
+                submitted = row.get("created_at", None)
+                if not isinstance(ans_map, dict):
+                    continue
+                for question, answer in ans_map.items():
+                    score = pd.to_numeric(answer, errors="coerce")
+                    if pd.isna(score):
+                        continue  # keep only numeric answers (Likert-like)
+                    question_text = str(question)
+                    base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
+                    schema_scale = question_scale_map.get(question_text)
+                    if schema_scale is None:
+                        schema_scale = question_scale_map.get(base_question)
+                    if schema_scale is not None and schema_scale > 1:
+                        q_scale_max = float(schema_scale)
+                    else:
+                        # Fallback when question is missing in schema snapshot.
+                        q_scores = pd.to_numeric(
+                            df["answers"].apply(
+                                lambda a: a.get(question) if isinstance(a, dict) else None
+                            ),
+                            errors="coerce",
+                        )
+                        q_max = q_scores.max()
+                        q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
+                    score_norm = normalize_to_5(float(score), q_scale_max)
+                    scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
+                    likert_rows.append({
+                        "Question": str(question),
+                        "Score": int(score) if float(score).is_integer() else float(score),
+                        "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
+                        "ScoreNormalized": round(float(score_norm), 2),
+                        "Submitted": submitted,
                     })
-            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+            if likert_rows:
+                likert_df = pd.DataFrame(likert_rows)
+                likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
+                likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
+
+                # Top/Bottom question chart
+                st.markdown('<div class="section-head">Top and Bottom Questions</div>', unsafe_allow_html=True)
+                st.caption("`Bottom` = lowest-rated questions based on average score. These highlight areas that may need improvement first.")
+                q_avg = (
+                    likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
+                    .mean()
+                    .rename(columns={"ScoreNormalized": "Average Score"})
+                )
+                q_avg["Responses"] = likert_df.groupby("Question").size().values
+                q_avg = q_avg.sort_values("Average Score", ascending=False)
+                top_n = q_avg.head(5)
+                bottom_n = q_avg.tail(5)
+                top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
+                top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
+
+                tb_chart = (
+                    alt.Chart(top_bottom)
+                    .mark_bar(cornerRadiusEnd=4)
+                    .encode(
+                        y=alt.Y("Question:N", sort="-x", title="Question"),
+                        x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
+                        color=alt.Color(
+                            "Average Score:Q",
+                            scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
+                            legend=alt.Legend(title="Score (/5)"),
+                        ),
+                        tooltip=[
+                            alt.Tooltip("Question:N"),
+                            alt.Tooltip("Average Score:Q", format=".2f"),
+                            alt.Tooltip("Responses:Q"),
+                            alt.Tooltip("Category:N", title="Group"),
+                        ],
+                    )
+                    .properties(height=280)
+                )
+                st.altair_chart(tb_chart, use_container_width=True)
+
+                st.dataframe(
+                    likert_df[["Question", "Score", "Score (Selected Scale)", "Submitted"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=320,
+                )
+            else:
+                st.info("No Likert responses found in the selected date range.")
 
     # ─────────────────────────────────
     # TAB 5 — DEMOGRAPHICS
@@ -858,7 +997,7 @@ def render_dashboard():
         if "demo_answers" not in df.columns:
             st.markdown("""<div class="empty-tab"><div class="icon">👥</div>
               <p>No demographic data available.<br>
-              Enable <strong>Commuter Profile</strong> in Form Builder to collect age, gender, occupation, PUV type, and commute frequency.</p>
+              Enable <strong>Commuter Profile</strong> in Form Builder to collect age, gender, occupation, transport type, and commute frequency.</p>
             </div>""", unsafe_allow_html=True)
         else:
             demo_df = pd.json_normalize(df["demo_answers"].dropna().tolist())
@@ -871,7 +1010,7 @@ def render_dashboard():
                     "What is your age bracket?":                  "Age Bracket",
                     "What is your gender?":                       "Gender",
                     "What is your primary occupation?":           "Occupation",
-                    "What primary PUV type do you usually ride?": "PUV Type",
+                    "What primary PUV type do you usually ride?": "Transport Type",
                     "How often do you commute?":                  "Commute Frequency",
                 }
                 present_demo = [q for q in DEMO_Q_LABELS if q in demo_df.columns]

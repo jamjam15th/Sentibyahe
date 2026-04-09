@@ -150,16 +150,27 @@ def apply_new_sort_order(ordered_ids: list):
 # ══════════════════════════════════════════
 try:
     meta_req  = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).limit(1).execute()
-    form_meta = meta_req.data[0] if meta_req.data else {"title": "PUV Commuter Survey", "description": "Please share your honest experience.", "include_demographics": False}
+    form_meta = meta_req.data[0] if meta_req.data else {
+        "title": "PUV Commuter Survey",
+        "description": "Please share your honest experience.",
+        "include_demographics": False,
+        "allow_multiple_responses": True,
+    }
 except Exception:
-    form_meta = {"title": "PUV Commuter Survey", "description": "Please share your honest experience.", "include_demographics": False}
+    form_meta = {
+        "title": "PUV Commuter Survey",
+        "description": "Please share your honest experience.",
+        "include_demographics": False,
+        "allow_multiple_responses": True,
+    }
 
 def update_meta():
     conn.client.table("form_meta").upsert({
         "admin_email": admin_email, "public_id": public_id,
         "title": st.session_state.get("meta_title", form_meta.get("title", "")),
         "description": st.session_state.get("meta_desc", form_meta.get("description", "")),
-        "include_demographics": st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))
+        "include_demographics": st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False)),
+        "allow_multiple_responses": st.session_state.get("meta_allow_multi", form_meta.get("allow_multiple_responses", True)),
     }, on_conflict="admin_email").execute()
 
 st.markdown("""
@@ -173,6 +184,12 @@ st.markdown("""
 
 st.text_input("SURVEY TITLE",       key="meta_title", value=form_meta.get("title", ""),       on_change=update_meta)
 st.text_area ("SURVEY DESCRIPTION", key="meta_desc",  value=form_meta.get("description", ""), on_change=update_meta, height=80)
+st.toggle(
+    "Allow multiple responses from the same user/session",
+    key="meta_allow_multi",
+    value=form_meta.get("allow_multiple_responses", True),
+    on_change=update_meta,
+)
 
 st.markdown(f"""
   <div class="custom-link-card">

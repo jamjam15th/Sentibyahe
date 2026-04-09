@@ -1,4 +1,5 @@
 import hashlib
+import time
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
 from streamlit_extras.stylable_container import stylable_container
@@ -76,30 +77,32 @@ html, body, p, div, span, a, button, label, input, textarea, select {
 }
 
 /* ── HORIZONTAL RADIO (Likert Scale Squares) ── */
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] {
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] {
     display: flex !important;
     flex-direction: row !important;
     width: 100% !important;
-    gap: 10px !important;
+    gap: 12px !important;
     flex-wrap: nowrap !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label {
-    flex: 1 1 0px !important;
-    height: 56px !important;
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label,
+[data-testid="stRadio"] div[aria-orientation="horizontal"] > label {
+    flex: 1 1 0 !important;
+    height: 52px !important;
     min-width: 0 !important;
     background: #ffffff !important;
-    border: 1.5px solid #dde3ef !important;
-    border-radius: 8px !important;
+    border: 1px solid #c9d5ea !important;
+    border-radius: 6px !important;
     padding: 0 !important;
     margin: 0 !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     cursor: pointer !important;
-    transition: all 0.15s ease !important;
+    transition: all .15s ease !important;
     position: relative !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child {
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label > div:first-child,
+[data-testid="stRadio"] div[aria-orientation="horizontal"] > label > div:first-child {
     display: none !important;
     width: 0 !important;
     height: 0 !important;
@@ -107,28 +110,26 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     position: absolute !important;
     pointer-events: none !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child > div { display: none !important; }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label > div:first-child input { display: none !important; }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label p {
-    color: #3b5bdb !important;
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label p,
+[data-testid="stRadio"] div[aria-orientation="horizontal"] > label p {
+    color: #2f4fd1 !important;
     font-weight: 600 !important;
-    font-size: 1rem !important;
+    font-size: .98rem !important;
     margin: 0 !important;
     padding: 0 !important;
     text-align: center !important;
     line-height: 1 !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label:hover {
-    border-color: #3b5bdb !important;
-    background: #f5f7ff !important;
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:hover,
+[data-testid="stRadio"] div[aria-orientation="horizontal"] > label:hover {
+    border-color: #9fb2dc !important;
+    background: #f8faff !important;
 }
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label:has(input:checked) {
-    border-color: #3b5bdb !important;
-    background: #eef1ff !important;
-    box-shadow: 0 0 0 2px #3b5bdb !important;
-}
-[data-testid="stRadio"] > div > div[aria-orientation="horizontal"] > label:has(input:checked) p {
-    color: #3b5bdb !important;
+[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:has(input:checked),
+[data-testid="stRadio"] div[aria-orientation="horizontal"] > label:has(input:checked) {
+    border-color: #2f4fd1 !important;
+    background: #eef3ff !important;
+    box-shadow: 0 0 0 1px #2f4fd1 !important;
 }
 
 /* ── INPUTS ── */
@@ -191,7 +192,12 @@ else:
 
 try:
     meta_res = conn.client.table("form_meta").select("*").eq("public_id", target_form_id).execute()
-    form_meta = meta_res.data[0] if meta_res.data else {"title": "PUV Survey", "description": "", "include_demographics": False}
+    form_meta = meta_res.data[0] if meta_res.data else {
+        "title": "PUV Survey",
+        "description": "",
+        "include_demographics": False,
+        "allow_multiple_responses": True,
+    }
     q_res = conn.client.table("form_questions").select("*").eq("public_id", target_form_id).order("sort_order").execute()
     custom_questions = q_res.data or []
 except Exception:
@@ -211,6 +217,24 @@ if form_meta.get("include_demographics", False):
     form_schema.extend(STANDARD_DEMO_QUESTIONS)
 form_schema.extend(custom_questions)
 
+allow_multiple_responses = form_meta.get("allow_multiple_responses", True)
+submitted_key = f"submitted_once_{target_form_id}"
+just_submitted_key = f"just_submitted_{target_form_id}"
+form_ready_key = f"form_ready_{target_form_id}"
+if submitted_key not in st.session_state:
+    st.session_state[submitted_key] = False
+if just_submitted_key not in st.session_state:
+    st.session_state[just_submitted_key] = False
+if form_ready_key not in st.session_state:
+    st.session_state[form_ready_key] = False
+
+if not st.session_state[form_ready_key]:
+    with st.spinner("Loading full survey form..."):
+        # Keep loader visible long enough so users can perceive it.
+        time.sleep(0.8)
+        st.session_state[form_ready_key] = True
+    st.rerun()
+
 # ── 3. HEADER ──
 st.markdown(f"""
 <div class="gf-header">
@@ -221,7 +245,17 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── 4. FORM ──
-if len(form_schema) > 0:
+if allow_multiple_responses and st.session_state.get(just_submitted_key):
+    st.success("✅ Response submitted successfully.")
+    st.info("Thank you for your feedback.")
+    if st.button("Submit another response", type="secondary", key=f"submit_again_{target_form_id}"):
+        st.session_state[just_submitted_key] = False
+        st.session_state[form_ready_key] = False
+        st.rerun()
+elif (not allow_multiple_responses) and st.session_state.get(submitted_key):
+    st.success("✅ Your response has already been submitted.")
+    st.info("This form accepts only one response per user/session.")
+elif len(form_schema) > 0:
     question_map = {} 
     with st.form("public_survey_form", clear_on_submit=True):
         user_answers = {}
@@ -271,62 +305,100 @@ if len(form_schema) > 0:
                 elif q_type == "Paragraph":
                     user_answers[unique_prompt] = st.text_area(prompt, key=key, placeholder="Your answer", label_visibility="collapsed")
                 elif q_type == "Multiple Choice":
-                    user_answers[unique_prompt] = st.radio(prompt, q.get("options", []), key=key, label_visibility="collapsed")
+                    ans_mc = st.radio(
+                        prompt,
+                        q.get("options", []),
+                        key=key,
+                        index=None,
+                        label_visibility="collapsed",
+                    )
+                    user_answers[unique_prompt] = ans_mc
                 elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                     scale_max = int(q.get("scale_max") or 5)
                     lbl_low  = q.get("scale_label_low", "")
                     lbl_high = q.get("scale_label_high", "")
-                    user_answers[unique_prompt] = st.radio(prompt, [str(x) for x in range(1, scale_max + 1)], key=key, horizontal=True, label_visibility="collapsed")
-                    st.markdown(f"""
-                    <div style="display:flex;justify-content:space-between;margin-top:0.4rem;padding:0 0.25rem;">
-                      <span style="font-size:11px;color:#7c8db5;font-weight:600;">{lbl_low}</span>
-                      <span style="font-size:11px;color:#7c8db5;font-weight:600;">{lbl_high}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    ans_likert = st.radio(
+                        prompt,
+                        [str(x) for x in range(1, scale_max + 1)],
+                        key=key,
+                        index=None,
+                        horizontal=True,
+                        label_visibility="collapsed",
+                    )
+                    user_answers[unique_prompt] = ans_likert
+                    if lbl_low or lbl_high:
+                        lbl_cols = st.columns(scale_max)
+                        with lbl_cols[0]:
+                            st.markdown(
+                                f"<div style='font-size:11px;color:#7c8db5;font-weight:600;text-align:left;line-height:1.2;'>{lbl_low}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with lbl_cols[-1]:
+                            st.markdown(
+                                f"<div style='font-size:11px;color:#7c8db5;font-weight:600;text-align:right;line-height:1.2;'>{lbl_high}</div>",
+                                unsafe_allow_html=True,
+                            )
 
         if st.form_submit_button("Submit Response →", type="primary"):
             try:
-                demo_answers = {}
-                raw_feedback_list = []
-                dim_scores = { "Tangibles": [], "Reliability": [], "Responsiveness": [], "Assurance": [], "Empathy": [] }
-                general_ratings = []
-                
-                for uprompt, ans in user_answers.items():
-                    if not ans: continue 
-                    
-                    q_info = question_map[uprompt]
-                    dim = q_info.get("servqual_dimension")
+                missing_required = []
+                for uprompt, q_info in question_map.items():
+                    if not q_info.get("is_required", False):
+                        continue
+                    ans = user_answers.get(uprompt)
                     q_type = q_info.get("q_type")
+                    if q_type in ("Short Answer", "Paragraph"):
+                        if ans is None or str(ans).strip() == "":
+                            missing_required.append(q_info.get("prompt", uprompt))
+                    else:
+                        if ans is None or str(ans).strip() == "":
+                            missing_required.append(q_info.get("prompt", uprompt))
 
-                    if dim == "Commuter Profile":
-                        demo_answers[q_info["prompt"]] = ans
-                    elif q_type in ("Rating (Likert)", "Rating (1-5)"):
-                        if dim in dim_scores:
-                            dim_scores[dim].append(int(ans))
-                        else:
-                            general_ratings.append(int(ans))
-                    elif q_type in ("Short Answer", "Paragraph"):
-                        raw_feedback_list.append(str(ans))
+                if missing_required:
+                    st.error("⚠️ Please answer all required questions before submitting.")
+                else:
+                    demo_answers = {}
+                    raw_feedback_list = []
+                    dim_scores = { "Tangibles": [], "Reliability": [], "Responsiveness": [], "Assurance": [], "Empathy": [] }
+                    general_ratings = []
+                    
+                    for uprompt, ans in user_answers.items():
+                        if not ans: continue 
+                        
+                        q_info = question_map[uprompt]
+                        dim = q_info.get("servqual_dimension")
+                        q_type = q_info.get("q_type")
 
-                payload = {
-                    "public_id": target_form_id,
-                    "admin_email": form_meta.get("admin_email", ""),
-                    "answers": user_answers,
-                    "demo_answers": demo_answers,
-                    "raw_feedback": " | ".join(raw_feedback_list) if raw_feedback_list else None,
-                    "sentiment_status": "pending",
-                    "tangibles_avg": sum(dim_scores["Tangibles"])/len(dim_scores["Tangibles"]) if dim_scores["Tangibles"] else None,
-                    "reliability_avg": sum(dim_scores["Reliability"])/len(dim_scores["Reliability"]) if dim_scores["Reliability"] else None,
-                    "responsiveness_avg": sum(dim_scores["Responsiveness"])/len(dim_scores["Responsiveness"]) if dim_scores["Responsiveness"] else None,
-                    "assurance_avg": sum(dim_scores["Assurance"])/len(dim_scores["Assurance"]) if dim_scores["Assurance"] else None,
-                    "empathy_avg": sum(dim_scores["Empathy"])/len(dim_scores["Empathy"]) if dim_scores["Empathy"] else None,
-                    "general_ratings_avg": sum(general_ratings)/len(general_ratings) if general_ratings else None,
+                        if dim == "Commuter Profile":
+                            demo_answers[q_info["prompt"]] = ans
+                        elif q_type in ("Rating (Likert)", "Rating (1-5)"):
+                            if dim in dim_scores:
+                                dim_scores[dim].append(int(ans))
+                            else:
+                                general_ratings.append(int(ans))
+                        elif q_type in ("Short Answer", "Paragraph"):
+                            raw_feedback_list.append(str(ans))
 
-                }
-                
-                conn.client.table("form_responses").insert(payload).execute()
-                
-                st.success("🎉 Response submitted successfully!")
-                st.balloons()
+                    payload = {
+                        "public_id": target_form_id,
+                        "admin_email": form_meta.get("admin_email", ""),
+                        "answers": user_answers,
+                        "demo_answers": demo_answers,
+                        "raw_feedback": " | ".join(raw_feedback_list) if raw_feedback_list else None,
+                        "sentiment_status": "pending",
+                        "tangibles_avg": sum(dim_scores["Tangibles"])/len(dim_scores["Tangibles"]) if dim_scores["Tangibles"] else None,
+                        "reliability_avg": sum(dim_scores["Reliability"])/len(dim_scores["Reliability"]) if dim_scores["Reliability"] else None,
+                        "responsiveness_avg": sum(dim_scores["Responsiveness"])/len(dim_scores["Responsiveness"]) if dim_scores["Responsiveness"] else None,
+                        "assurance_avg": sum(dim_scores["Assurance"])/len(dim_scores["Assurance"]) if dim_scores["Assurance"] else None,
+                        "empathy_avg": sum(dim_scores["Empathy"])/len(dim_scores["Empathy"]) if dim_scores["Empathy"] else None,
+                        "general_ratings_avg": sum(general_ratings)/len(general_ratings) if general_ratings else None,
+
+                    }
+                    
+                    conn.client.table("form_responses").insert(payload).execute()
+                    
+                    st.session_state[submitted_key] = True
+                    st.session_state[just_submitted_key] = True
+                    st.rerun()
             except Exception as e:
                 st.error(f"⚠️ Error saving response: {e}")
