@@ -5,6 +5,11 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
 
+def normalize_to_5(score, scale_max):
+    if pd.isna(score):
+        return score
+    return (score / scale_max) * 5
+
 # ══════════════════════════════════════════
 # PAGE CONFIG
 # ══════════════════════════════════════════
@@ -322,7 +327,16 @@ def render_dashboard():
 
     overall_avg = 0.0
     if has_servqual_data:
-        overall_avg = df[list(present_servqual_dims.values())].mean().mean()
+        normalized_df = df.copy()
+
+        scale_max = df[list(present_servqual_dims.values())].max().max()
+        if pd.isna(scale_max) or scale_max == 0:
+            scale_max = 5
+
+        for col in present_servqual_dims.values():
+            normalized_df[col] = normalized_df[col].apply(lambda x: normalize_to_5(x, scale_max))
+
+        overall_avg = normalized_df[list(present_servqual_dims.values())].mean().mean()
         if pd.isna(overall_avg):
             overall_avg = 0.0
 
@@ -446,9 +460,9 @@ def render_dashboard():
         else:
             # dim_means uses ONLY the 5 SERVQUAL dims
             dim_means = {
-                k: float(df[v].mean())
+                k: float(normalized_df[v].mean())
                 for k, v in present_servqual_dims.items()
-                if not pd.isna(df[v].mean())
+                if not pd.isna(normalized_df[v].mean())
             }
             labels = list(dim_means.keys())
             values = list(dim_means.values())
@@ -459,13 +473,57 @@ def render_dashboard():
                 if len(labels) >= 3:
                     v_closed = values + [values[0]]
                     l_closed = labels + [labels[0]]
+                    target_score = 4  # benchmark (good service level)
+
+                    v_closed = values + [values[0]]
+                    l_closed = labels + [labels[0]]
+
                     fig = go.Figure()
+
+                    # 🎯 ACTUAL DATA
                     fig.add_trace(go.Scatterpolar(
-                        r=v_closed, theta=l_closed, fill="toself",
-                        fillcolor="rgba(26,50,99,0.15)",
-                        line=dict(color="rgb(26,50,99)", width=2),
-                        marker=dict(color="rgb(255,197,112)", size=7),
+                        r=v_closed,
+                        theta=l_closed,
+                        fill="toself",
+                        name="Actual Score",
+                        fillcolor="rgba(26,50,99,0.25)",
+                        line=dict(color="rgb(26,50,99)", width=3),
+                        marker=dict(size=8, color="#ffc570"),
                     ))
+
+                    # 📏 BENCHMARK LINE
+                    fig.add_trace(go.Scatterpolar(
+                        r=[target_score]*len(l_closed),
+                        theta=l_closed,
+                        name="Target (4.0)",
+                        line=dict(color="rgba(176,58,46,0.7)", dash="dash"),
+                    ))
+
+                    fig.update_layout(
+                        polar=dict(
+                            bgcolor="rgba(0,0,0,0)",
+                            radialaxis=dict(
+                                visible=True,
+                                range=[0, 5],
+                                tickvals=[1,2,3,4,5],
+                                tickfont=dict(size=10, color="rgb(120,148,172)"),
+                                gridcolor="rgba(84,119,146,0.2)",
+                            ),
+                            angularaxis=dict(
+                                tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
+                            ),
+                        ),
+                        showlegend=True,
+                        legend=dict(
+                            orientation="h",
+                            y=-0.2
+                        ),
+                        margin=dict(t=40, b=40, l=60, r=60),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        height=360,
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
                     fig.update_layout(
                         polar=dict(
                             bgcolor="rgba(0,0,0,0)",
@@ -783,7 +841,7 @@ def render_dashboard():
                     summary_rows.append({
                         "Dimension": k,
                         "Type": "SERVQUAL" if k != "General Ratings" else "General",
-                        "Average": f"{df[v].mean():.2f}",
+                        "Average": f"{normalized_df[v].mean():.2f}",
                         "Min": f"{df[v].min():.2f}",
                         "Max": f"{df[v].max():.2f}",
                         "Responses": int(df[v].notna().sum()),
@@ -882,7 +940,7 @@ def render_dashboard():
                     summary_rows_export.append({
                         "Dimension": k,
                         "Type": "SERVQUAL" if k != "General Ratings" else "General",
-                        "Average": round(df[v].mean(), 4),
+                        "Average": round(normalized_df[v].mean(), 4),
                         "Min": round(df[v].min(), 4),
                         "Max": round(df[v].max(), 4),
                         "Responses": int(df[v].notna().sum()),
