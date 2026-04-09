@@ -435,25 +435,27 @@ def render_dashboard():
       <div class="kpi-pending">⏳ {pending_n} pending</div>
     </div>""", unsafe_allow_html=True)
 
-    if not scatter_df.empty:
-    fig = px.scatter(
-        scatter_df,
-        x='overall_servqual',
-        y='sentiment_score',
-        color='sentiment_status',
-        labels={
-            'overall_servqual': 'Overall SERVQUAL (1–5)',
-            'sentiment_score': 'Sentiment Confidence'
-        },
-        title='SERVQUAL vs Feedback Sentiment',
-        color_discrete_map={
-            'POSITIVE': 'green',
-            'NEUTRAL': 'orange',
-            'NEGATIVE': 'red'
-        },
-        hover_data=['raw_feedback']
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    if not df_sent.empty and 'overall_servqual' in df_sent.columns and 'sentiment_score' in df_sent.columns:
+        scatter_df = df_sent.dropna(subset=['overall_servqual', 'sentiment_score'])
+        if not scatter_df.empty:
+            fig = px.scatter(
+                scatter_df,
+                x='overall_servqual',
+                y='sentiment_score',
+                color='sentiment_status',
+                labels={
+                    'overall_servqual': 'Overall SERVQUAL (1–5)',
+                    'sentiment_score': 'Sentiment Confidence'
+                },
+                title='SERVQUAL vs Feedback Sentiment',
+                color_discrete_map={
+                    'POSITIVE': 'green',
+                    'NEUTRAL': 'orange',
+                    'NEGATIVE': 'red'
+                },
+                hover_data=['raw_feedback']
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 
     # ══════════════════════════════════
