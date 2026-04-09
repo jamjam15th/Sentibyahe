@@ -298,6 +298,7 @@ def render_dashboard():
         "Responsiveness": "responsiveness_avg",
         "Assurance":      "assurance_avg",
         "Empathy":        "empathy_avg",
+        "General Ratings":  "general_ratings_avg",
     }
     present_dims = {k: v for k, v in DIM_COLS.items() if v in df.columns}
     
@@ -312,6 +313,7 @@ def render_dashboard():
         "Responsiveness": "#ffc570",
         "Assurance":      "#3c6482",
         "Empathy":        "#d4a373",
+        "General Ratings": "#6c757d",
     }
 
     # ── Sentiment analysis — batch pending rows, then bulk upsert ──

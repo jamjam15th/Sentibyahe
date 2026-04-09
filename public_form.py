@@ -289,7 +289,8 @@ if len(form_schema) > 0:
                 demo_answers = {}
                 raw_feedback_list = []
                 dim_scores = { "Tangibles": [], "Reliability": [], "Responsiveness": [], "Assurance": [], "Empathy": [] }
-
+                general_ratings = []
+                
                 for uprompt, ans in user_answers.items():
                     if not ans: continue 
                     
@@ -299,8 +300,11 @@ if len(form_schema) > 0:
 
                     if dim == "Commuter Profile":
                         demo_answers[q_info["prompt"]] = ans
-                    elif q_type in ("Rating (Likert)", "Rating (1-5)") and dim in dim_scores:
-                        dim_scores[dim].append(int(ans))
+                    elif q_type in ("Rating (Likert)", "Rating (1-5)"):
+                        if dim in dim_scores:
+                            dim_scores[dim].append(int(ans))
+                        else:
+                            general_ratings.append(int(ans))
                     elif q_type in ("Short Answer", "Paragraph"):
                         raw_feedback_list.append(str(ans))
 
@@ -316,6 +320,8 @@ if len(form_schema) > 0:
                     "responsiveness_avg": sum(dim_scores["Responsiveness"])/len(dim_scores["Responsiveness"]) if dim_scores["Responsiveness"] else None,
                     "assurance_avg": sum(dim_scores["Assurance"])/len(dim_scores["Assurance"]) if dim_scores["Assurance"] else None,
                     "empathy_avg": sum(dim_scores["Empathy"])/len(dim_scores["Empathy"]) if dim_scores["Empathy"] else None,
+                    "general_ratings_avg": sum(general_ratings)/len(general_ratings) if general_ratings else None,
+
                 }
                 
                 conn.client.table("form_responses").insert(payload).execute()
