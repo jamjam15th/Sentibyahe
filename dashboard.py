@@ -322,17 +322,21 @@ def render_dashboard():
         all_dim_cols["General Ratings"] = GENERAL_RATINGS_COL
 
     # FIX #5: overall_avg uses ONLY the 5 SERVQUAL dims, NOT General Ratings
-    has_servqual_data = bool(present_servqual_dims) and df[
-        list(present_servqual_dims.values())
-    ].notna().any().any()
+  # ── SERVQUAL Radar & Overall KPI ──
+    has_servqual_data = bool(present_servqual_dims) and df[list(present_servqual_dims.values())].notna().any().any()
 
     overall_avg = 0.0
     if has_servqual_data:
-        # Use normalized_df only if you want normalization; otherwise use df directly
-        radar_df = df[present_servqual_dims.values()].mean().rename(
-            {v: k for k, v in present_servqual_dims.items()}
-        )
+        # Optional: normalize each dimension to 5 if your scale is different
+        normalized_df = df[present_servqual_dims.values()].apply(lambda col: col.apply(lambda x: normalize_to_5(x, scale_max=5)))
+        
+        # Compute average per dimension
+        radar_df = normalized_df.mean().rename({v: k for k, v in present_servqual_dims.items()})
 
+        # Overall SERVQUAL avg (mean of 5 dimensions)
+        overall_avg = radar_df.mean()
+
+        # Plot radar
         fig = go.Figure(
             data=go.Scatterpolar(
                 r=radar_df.values,
@@ -361,9 +365,8 @@ def render_dashboard():
         *Each axis represents a SERVQUAL dimension. The values are averages based on a 1–5 Likert scale. 
         A fuller shape indicates higher satisfaction across dimensions.*
         """)
-    else: 
-        df['overall_servqual'] = None
-    has_any_rating_data = has_servqual_data or has_general_ratings
+    else:
+        overall_avg = None  # no SERVQUAL data
 
     # ── Palette scoped only to what's present (FIX #1 /#2) ──
     def scoped_palette(dim_keys):
@@ -430,15 +433,13 @@ def render_dashboard():
     </div>""", unsafe_allow_html=True)
 
     # FIX #5: Overall SERVQUAL shows only the 5 SERVQUAL dims
-    servqual_display = (
-        f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>"
-        if has_servqual_data else "N/A"
-    )
-    servqual_subtext = "Avg of 5 SERVQUAL dimensions" if has_servqual_data else "No SERVQUAL tags yet"
+    servqual_display = f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>" if overall_avg is not None else "N/A"
+    servqual_subtext = "Avg of 5 SERVQUAL dimensions" if overall_avg is not None else "No SERVQUAL tags yet"
+
     k3.markdown(f"""<div class="kpi-card">
-      <div class="kpi-title">Overall SERVQUAL</div>
-      <div class="kpi-value gold">{servqual_display}</div>
-      <div class="kpi-sub">{servqual_subtext}</div>
+    <div class="kpi-title">Overall SERVQUAL</div>
+    <div class="kpi-value gold">{servqual_display}</div>
+    <div class="kpi-sub">{servqual_subtext}</div>
     </div>""", unsafe_allow_html=True)
 
     k4.markdown(f"""<div class="kpi-card">
