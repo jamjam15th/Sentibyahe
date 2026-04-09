@@ -416,23 +416,6 @@ def render_dashboard():
       <div class="kpi-pending">⏳ {pending_n} pending</div>
     </div>""", unsafe_allow_html=True)
 
-    # FIX #8: General Ratings shown as a separate banner below KPIs, not mixed in
-    if has_general_ratings and general_ratings_avg_val is not None:
-        gr_pct = (general_ratings_avg_val / 5) * 100
-        gr_color = "#4a7c59" if general_ratings_avg_val >= 4 else "#8b9dc3" if general_ratings_avg_val >= 3 else "#b03a2e"
-        st.markdown(f"""
-        <div class="gen-rating-bar">
-          <div class="label">📋 General Ratings (untagged Likert questions)</div>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:.4rem;">
-            <div class="val" style="color:{gr_color};">{general_ratings_avg_val:.2f} / 5</div>
-            <div style="flex:1;background:rgba(108,117,125,0.12);border-radius:999px;height:7px;overflow:hidden;">
-              <div style="width:{gr_pct:.1f}%;height:100%;border-radius:999px;background:{gr_color};transition:width .4s;"></div>
-            </div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<div style='margin-bottom:1.2rem'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════
     # TABS
