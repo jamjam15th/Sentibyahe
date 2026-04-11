@@ -61,7 +61,7 @@ st.markdown("""
 .dash-header .sub { font-size: .78rem; color: rgba(239,210,176,0.8); margin: 0; }
 .live-badge {
   background: rgba(255,255,255,0.12); color: var(--gold);
-  padding: 6px 14px; border-radius: 20px; font-weight: 700;
+  padding: 6px 14px; border-radius: 20px; font-weight: 700;format
   font-size: .75rem; letter-spacing: .06em;
   display: flex; align-items: center; gap: 8px;
   border: 1px solid rgba(255,197,112,0.3); white-space: nowrap;
@@ -231,15 +231,14 @@ def analyze_text(text: str) -> tuple[str, float]:
         "LABEL_2": "POSITIVE", "positive": "POSITIVE",
     }
     res = sentiment_analyzer(text[:512])[0]
-    return label_map.get(res["label"], res["label"].upper()), round(res["score"], 4)
+    return label_map.get(res["label"], str(res["label"]).upper()), round(res["score"], 4)
 
 # ══════════════════════════════════════════
 # DATA FETCH
 # FIX #4: Removed cache.clear() from inside the fragment.
-# Instead we use a short TTL (30s) so Streamlit re-fetches
-# automatically on the next fragment run after sentiment is saved.
+# Short TTL matches fragment interval so data re-fetches each live cycle.
 # ══════════════════════════════════════════
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=5)
 def fetch_dashboard_data(email: str) -> pd.DataFrame:
     try:
         r = (conn.client.table("form_responses")
@@ -303,10 +302,69 @@ with cd1:
 with cd2:
     date_to   = st.date_input("To",   value=datetime.today(), key="dt")
 
+# Demographics: standard respondent profile column keys (transport supports legacy + multi-select prompt)
+TRANSPORT_DEMO_KEYS = (
+    "Which land public transportation modes do you usually use? (Select all that apply)",
+    "Which PUV or transport types do you usually ride or use? (Select all that apply)",
+    "What primary land public transportation mode do you usually use?",
+    "What primary PUV type do you usually ride?",
+)
+
+
+def _explode_demo_series(series: pd.Series) -> pd.Series:
+    rows = []
+    for v in series.dropna():
+        if isinstance(v, (list, tuple)):
+            for x in v:
+                if x is not None and str(x).strip():
+                    rows.append(str(x).strip())
+        elif v is not None and str(v).strip():
+            rows.append(str(v).strip())
+    return pd.Series(rows, dtype=str)
+
+
+def _demo_chart_specs(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
+    specs: list[tuple[str, str]] = []
+    for col, lab in [
+        ("What is your age bracket?", "Age Bracket"),
+        ("What is your gender?", "Gender"),
+        ("What is your primary occupation?", "Occupation"),
+    ]:
+        if col in demo_df.columns:
+            specs.append((col, lab))
+    for tk in TRANSPORT_DEMO_KEYS:
+        if tk in demo_df.columns:
+            specs.append((tk, "Land public transportation mode"))
+            break
+    commute_c = "How often do you commute?"
+    if commute_c in demo_df.columns:
+        specs.append((commute_c, "Commute Frequency"))
+    return specs
+
+
+def _demo_chart_specs_all(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
+    """Known respondent-profile order first, then any extra keys (custom demographic prompts)."""
+    specs = _demo_chart_specs(demo_df)
+    covered = {c for c, _ in specs}
+    for col in sorted(demo_df.columns):
+        if col not in covered:
+            lab = col if len(col) <= 48 else col[:45] + "…"
+            specs.append((col, lab))
+    return specs
+
+
+def _format_demo_cell(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    if isinstance(v, (list, tuple)):
+        return ", ".join(str(x) for x in v if x is not None and str(x).strip())
+    return str(v).strip()
+
+
 # ══════════════════════════════════════════
-# LIVE FRAGMENT (runs every 30 s)
+# LIVE FRAGMENT (runs every 5 s)
 # ══════════════════════════════════════════
-@st.fragment(run_every=30)
+@st.fragment(run_every=timedelta(seconds=5))
 def render_dashboard():
     df_raw = fetch_dashboard_data(admin_email)
     question_scale_map = fetch_question_scale_map(admin_email)
@@ -402,7 +460,7 @@ def render_dashboard():
                 })
             persist_sentiment_batch(batch_updates)
             # FIX #4: do NOT call fetch_dashboard_data.clear() here.
-            # The TTL=30s cache will refresh on the next fragment cycle.
+            # The TTL cache will refresh on the next fragment cycle.
 
     # ── Counts ──
     sent_valid = (
@@ -414,18 +472,11 @@ def render_dashboard():
     total     = len(df)
     pos_count = int((df_sent[sent_col] == "POSITIVE").sum()) if not df_sent.empty else 0
     pos_rate  = (pos_count / len(df_sent) * 100) if len(df_sent) > 0 else 0
-    avg_conf  = (
-        float(df_sent["sentiment_score"].mean())
-        if "sentiment_score" in df_sent.columns and not df_sent.empty
-        else 0.0
-    )
-    if pd.isna(avg_conf):
-        avg_conf = 0.0
 
     # ══════════════════════════════════
     # KPI RIBBON
     # ══════════════════════════════════
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3 = st.columns(3)
 
     k1.markdown(f"""<div class="kpi-card">
       <div class="kpi-title">Total Responses</div>
@@ -449,12 +500,6 @@ def render_dashboard():
       <div class="kpi-title">Overall SERVQUAL</div>
       <div class="kpi-value gold">{servqual_display}</div>
       <div class="kpi-sub">{servqual_subtext}</div>
-    </div>""", unsafe_allow_html=True)
-
-    k4.markdown(f"""<div class="kpi-card">
-      <div class="kpi-title">AI Confidence</div>
-      <div class="kpi-value">{avg_conf*100:.1f}%</div>
-      <div class="conf-bar-wrap"><div class="conf-bar" style="width:{avg_conf*100:.1f}%"></div></div>
     </div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════
@@ -481,14 +526,18 @@ def render_dashboard():
             SERVQUAL Guide (Likert Scale Only)
           </div>
           <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-            This radar is computed only from <strong>Likert-scale question averages</strong> tagged to SERVQUAL dimensions
+            This radar summarizes <strong>land public transportation</strong> feedback from your survey—broadly:
+            <strong>service experience</strong>, <strong>vehicles and facilities</strong>, <strong>people involved</strong> (e.g. crew and passengers),
+            and how riders see the <strong>current situation</strong> (e.g. delays, travel conditions, or how <strong>cost and operating pressures</strong> affect the trip).
+            Your exact topics depend on how you wrote your Likert items; the radar only groups them under SERVQUAL.<br>
+            Scores come only from <strong>Likert averages</strong> tagged to SERVQUAL dimensions
             (Tangibles, Reliability, Responsiveness, Assurance, Empathy).<br>
             <strong>Scale conversion:</strong> any Likert scale with values above <strong>5</strong>
-            is automatically normalized to a <strong>1 to 5</strong> scale first for consistent SERVQUAL computation.<br>
-            <strong>How to read:</strong> each spoke is one dimension, and scores are on a <strong>1 to 5 scale</strong>;
-            farther from the center means better service quality.<br>
-            <strong>How to use:</strong> use this chart as a quick view of what response data is currently available
-            about <strong>public land transportation service quality</strong> across SERVQUAL dimensions.
+            is normalized to a <strong>1 to 5</strong> scale for consistent SERVQUAL computation.<br>
+            <strong>How to read:</strong> each spoke is one dimension on a <strong>1 to 5</strong> scale;
+            farther from the center means stronger perceived quality on that dimension.<br>
+            <strong>How to use:</strong> use this chart to see what dimension-level data you already have from discussions
+            about land public transportation in your responses.
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -703,6 +752,22 @@ def render_dashboard():
     # is shown on its own row with an index number for context.
     # ─────────────────────────────────
     with tab3:
+        st.markdown("""
+        <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                    border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+          <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+            Sentiment Guide
+          </div>
+          <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+            This tab is for <strong>open-ended answers</strong> (short answer / paragraph), not Likert scores.<br>
+            <strong>Distribution:</strong> share of positive, neutral, and negative labels from the AI model for the selected date range.<br>
+            <strong>Avg confidence:</strong> average model certainty per label (higher usually means the automatic tag is more stable—still validate important quotes manually).<br>
+            <strong>Feedback log:</strong> question text, respondent answer, sentiment, and time—use it to read <em>what</em> respondents said about land public transportation (experience, drivers, conditions, etc.) and to back up charts with real wording.<br>
+            <strong>How to use:</strong> spot themes in negative or positive comments, quote in reports or briefings when helpful, and cross-check against your quantitative SERVQUAL results.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if df_sent.empty:
             # FIX #10: Clearer empty state
             st.markdown("""<div class="empty-tab"><div class="icon">💬</div>
@@ -762,6 +827,9 @@ def render_dashboard():
                     "What is your gender?",
                     "What is your primary occupation?",
                     "What primary PUV type do you usually ride?",
+                    "What primary land public transportation mode do you usually use?",
+                    "Which PUV or transport types do you usually ride or use? (Select all that apply)",
+                    "Which land public transportation modes do you usually use? (Select all that apply)",
                     "How often do you commute?",
                 }
                 log_rows = []
@@ -817,6 +885,24 @@ def render_dashboard():
     # FIX #3: dropna on Dimension after melt to remove None entries
     # ─────────────────────────────────
     with tab4:
+        st.markdown("""
+        <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                    border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+          <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+            Quantitative Guide
+          </div>
+          <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+            This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation—service quality, vehicles, experience, or anything you asked on a scale.<br><br>
+            <strong>Score by Selected Context:</strong> average SERVQUAL (and general) scores grouped by a field from the respondent profile (e.g. how often they ride, mode type, etc.).<br>
+            <strong>How to use:</strong> pick a grouping that fits your research question, then see which segments score higher or lower on each dimension.<br><br>
+            <strong>Top and Bottom Questions:</strong> which Likert items have the highest vs lowest average scores (after normalizing scales where needed).<br>
+            <strong>How to use:</strong> name strengths and problem areas in your analysis and tie them to the SERVQUAL framework.<br><br>
+            <strong>Likert Response Log:</strong> each numeric answer with question text and time.<br>
+            <strong>How to use:</strong> audit the data, spot outliers, and support tables or appendices with raw-scale answers.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if not has_any_rating_data:
             # FIX #10: Clearer empty state
             st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
@@ -825,25 +911,6 @@ def render_dashboard():
               (they appear as General Ratings) in Form Builder.</p>
             </div>""", unsafe_allow_html=True)
         else:
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
-                Quantitative Guide
-              </div>
-              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This tab summarizes numeric (Likert) results and helps you see where scores are high/low.<br><br>
-                <strong>Score by Selected Context:</strong> compares average scores per dimension using any available land public transportation category
-                (example: vehicle used, commute frequency, or other collected profile/context fields).<br>
-                <strong>How to use:</strong> choose a grouping field, then compare which groups rate lower/higher per dimension.<br><br>
-                <strong>Top and Bottom Questions:</strong> highlights highest and lowest scoring Likert questions.<br>
-                <strong>How to use:</strong> quickly identify strongest and weakest service aspects.<br><br>
-                <strong>Likert Response Log:</strong> raw per-question numeric responses with submission time.<br>
-                <strong>How to use:</strong> verify actual recorded answers, review specific questions, and trace unusual values.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-
             if "demo_answers" in df.columns:
                 context_keys = sorted({
                     k
@@ -994,10 +1061,24 @@ def render_dashboard():
     # TAB 5 — DEMOGRAPHICS
     # ─────────────────────────────────
     with tab5:
+        st.markdown("""
+        <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                    border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+          <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+            Demographics Guide
+          </div>
+          <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+            Data comes from the <strong>respondent profile</strong> block and/or any questions you marked as <strong>demographic</strong> in Form Builder.<br>
+            <strong>Donuts:</strong> how often each option was chosen. For <strong>transport (select all that apply)</strong>, one person can count in several slices.<br>
+            <strong>Table below:</strong> each row is one respondent—profile answers beside their <strong>feedback text</strong>, <strong>sentiment</strong>, and <strong>rating averages</strong> so you can read answers in context.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if "demo_answers" not in df.columns:
             st.markdown("""<div class="empty-tab"><div class="icon">👥</div>
               <p>No demographic data available.<br>
-              Enable <strong>Commuter Profile</strong> in Form Builder to collect age, gender, occupation, transport type, and commute frequency.</p>
+              Turn on <strong>respondent profile</strong> and/or mark your own questions as <strong>demographic</strong> in Form Builder, then collect responses.</p>
             </div>""", unsafe_allow_html=True)
         else:
             demo_df = pd.json_normalize(df["demo_answers"].dropna().tolist())
@@ -1006,29 +1087,22 @@ def render_dashboard():
                   <p>No demographic responses recorded yet.</p>
                 </div>""", unsafe_allow_html=True)
             else:
-                DEMO_Q_LABELS = {
-                    "What is your age bracket?":                  "Age Bracket",
-                    "What is your gender?":                       "Gender",
-                    "What is your primary occupation?":           "Occupation",
-                    "What primary PUV type do you usually ride?": "Transport Type",
-                    "How often do you commute?":                  "Commute Frequency",
-                }
-                present_demo = [q for q in DEMO_Q_LABELS if q in demo_df.columns]
-                if not present_demo:
+                demo_specs = _demo_chart_specs_all(demo_df)
+                if not demo_specs:
                     st.dataframe(demo_df, use_container_width=True, hide_index=True)
                 else:
                     pairs = [
-                        (present_demo[i], present_demo[i + 1] if i + 1 < len(present_demo) else None)
-                        for i in range(0, len(present_demo), 2)
+                        (demo_specs[i], demo_specs[i + 1] if i + 1 < len(demo_specs) else None)
+                        for i in range(0, len(demo_specs), 2)
                     ]
-                    for q_l, q_r in pairs:
+                    for spec_l, spec_r in pairs:
                         cl, cr = st.columns(2)
-                        for col_w, q in [(cl, q_l), (cr, q_r)]:
-                            if q is None:
+                        for col_w, spec in [(cl, spec_l), (cr, spec_r)]:
+                            if spec is None:
                                 continue
+                            q, label = spec[0], spec[1]
                             with col_w:
-                                label = DEMO_Q_LABELS.get(q, q)
-                                vc = demo_df[q].value_counts().reset_index()
+                                vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
                                 vc.columns = [label, "Count"]
                                 st.altair_chart(
                                     alt.Chart(vc)
@@ -1046,6 +1120,49 @@ def render_dashboard():
                                     use_container_width=True,
                                 )
 
+                st.markdown(
+                    '<div class="section-head" style="margin-top:1.2rem;">💬 Profile and responses (same person)</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    "Each row is one submission: demographic answers (including custom profile questions) next to that respondent’s open feedback, sentiment label, and SERVQUAL / general rating averages when present."
+                )
+                has_demo_row = df["demo_answers"].apply(
+                    lambda x: isinstance(x, dict) and bool(x)
+                )
+                view = df[has_demo_row].copy()
+                if view.empty:
+                    st.info("No rows with filled profile data in this date range.")
+                else:
+                    dnorm = pd.json_normalize(view["demo_answers"].tolist())
+                    for c in dnorm.columns:
+                        dnorm[c] = dnorm[c].map(_format_demo_cell)
+                    dnorm.columns = [
+                        (f"Profile: {c}" if len(c) <= 56 else f"Profile: {c[:53]}…") for c in dnorm.columns
+                    ]
+                    resp_cols = [c for c in ("created_at", "sentiment_status", "raw_feedback") if c in view.columns]
+                    for c in present_servqual_dims.values():
+                        if c in view.columns:
+                            resp_cols.append(c)
+                    if has_general_ratings and GENERAL_RATINGS_COL in view.columns:
+                        resp_cols.append(GENERAL_RATINGS_COL)
+                    resp_part = view[resp_cols].reset_index(drop=True)
+                    merged_view = pd.concat([resp_part, dnorm.reset_index(drop=True)], axis=1)
+                    table_kw = dict(
+                        data=merged_view,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(520, 80 + 36 * max(1, len(merged_view))),
+                    )
+                    if "raw_feedback" in merged_view.columns:
+                        table_kw["column_config"] = {
+                            "raw_feedback": st.column_config.TextColumn(
+                                "Open feedback",
+                                width="large",
+                            )
+                        }
+                    st.dataframe(**table_kw)
+
     # ── EXPORT ──
     st.markdown("---")
     st.markdown('<div class="section-head">📥 Export Data</div>', unsafe_allow_html=True)
@@ -1055,7 +1172,7 @@ def render_dashboard():
         st.download_button(
             "⬇ All Responses (CSV)",
             data=df.to_csv(index=False).encode("utf-8"),
-            file_name=f"puv_responses_{date_from}_{date_to}.csv",
+            file_name=f"land_public_transport_responses_{date_from}_{date_to}.csv",
             mime="text/csv",
             use_container_width=True,
         )
@@ -1068,7 +1185,7 @@ def render_dashboard():
             st.download_button(
                 "⬇ Sentiment Log (CSV)",
                 data=df_sent[cols_to_export].to_csv(index=False).encode("utf-8"),
-                file_name=f"puv_sentiment_{date_from}_{date_to}.csv",
+                file_name=f"land_public_transport_sentiment_{date_from}_{date_to}.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
@@ -1091,7 +1208,7 @@ def render_dashboard():
                 st.download_button(
                     "⬇ SERVQUAL Summary (CSV)",
                     data=pd.DataFrame(summary_rows_export).to_csv(index=False).encode("utf-8"),
-                    file_name=f"puv_servqual_summary_{date_from}_{date_to}.csv",
+                    file_name=f"land_public_transport_servqual_summary_{date_from}_{date_to}.csv",
                     mime="text/csv",
                     use_container_width=True,
                 )

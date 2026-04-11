@@ -1,12 +1,14 @@
 import hashlib
+import html
 import time
+import uuid
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
 from streamlit_extras.stylable_container import stylable_container
 
 st.set_page_config(
     initial_sidebar_state="collapsed",
-    page_title="Take Survey — PUV Analytics",
+    page_title="Take Survey — Land public transportation",
     page_icon="🚌",
     layout="centered",
 )
@@ -193,23 +195,88 @@ else:
 try:
     meta_res = conn.client.table("form_meta").select("*").eq("public_id", target_form_id).execute()
     form_meta = meta_res.data[0] if meta_res.data else {
-        "title": "PUV Survey",
+        "title": "Land public transportation survey",
         "description": "",
         "include_demographics": False,
         "allow_multiple_responses": True,
+        "reach_out_contact": "",
     }
     q_res = conn.client.table("form_questions").select("*").eq("public_id", target_form_id).order("sort_order").execute()
     custom_questions = q_res.data or []
 except Exception:
     st.stop()
 
+# Stable browser-tab id in URL so "one response" survives reload (not just session_state).
+client_cid = None
+if not is_preview:
+    qp = st.query_params
+    if "cid" not in qp or not str(qp.get("cid", "")).strip():
+        qp["cid"] = str(uuid.uuid4())
+        st.rerun()
+    client_cid = str(qp["cid"]).strip()
+
+
+def _already_submitted_for_client(public_id: str, cid: str) -> bool:
+    if not cid:
+        return False
+    try:
+        r = conn.client.rpc(
+            "has_form_submission",
+            {"p_public_id": public_id, "p_client_id": cid},
+        ).execute()
+        if r.data is True or r.data is False:
+            return bool(r.data)
+        if isinstance(r.data, list) and len(r.data) > 0:
+            return bool(r.data[0])
+    except Exception:
+        pass
+    try:
+        chk = (
+            conn.client.table("form_responses")
+            .select("id")
+            .eq("public_id", public_id)
+            .eq("client_submission_id", cid)
+            .limit(1)
+            .execute()
+        )
+        return bool(chk.data)
+    except Exception:
+        return False
+
+
 # ── 2. SCHEMA ──
+LPT_TRANSPORT_MODE_OPTIONS = [
+    "Jeepney",
+    "Modern jeepney / E-jeep",
+    "Ordinary bus",
+    "Air-conditioned bus",
+    "UV Express",
+    "Van pool (UV-style)",
+    "Tricycle",
+    "Motorcycle taxi (habal-habal)",
+    "Train (MRT / LRT / PNR)",
+    "Taxi",
+    "TNVS (Grab, etc.)",
+    "Ferry / boat",
+    "Walking / cycling",
+    "Company or school service",
+    "Private car (as passenger)",
+    "Other",
+]
+
 STANDARD_DEMO_QUESTIONS = [
-    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24","25-34","35-44","45-54","55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile"},
-    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male","Female","Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile"},
-    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student","Employed","Self-employed","Unemployed","Retired"],"is_required": True, "servqual_dimension": "Commuter Profile"},
-    {"prompt": "What primary PUV type do you usually ride?", "q_type": "Multiple Choice", "options": ["Jeepney","Bus","UV Express","Tricycle","Train"],"is_required": True, "servqual_dimension": "Commuter Profile"},
-    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily","3-4 times a week","1-2 times a week","Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile"},
+    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {
+        "prompt": "Which land public transportation modes do you usually use? (Select all that apply)",
+        "q_type": "Multiple Select",
+        "options": LPT_TRANSPORT_MODE_OPTIONS,
+        "is_required": True,
+        "servqual_dimension": "Commuter Profile",
+        "is_demographic": True,
+    },
+    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
 ]
 
 form_schema = []
@@ -218,6 +285,22 @@ if form_meta.get("include_demographics", False):
 form_schema.extend(custom_questions)
 
 allow_multiple_responses = form_meta.get("allow_multiple_responses", True)
+
+
+def _render_reach_out_contact():
+    txt = (form_meta.get("reach_out_contact") or "").strip()
+    if not txt:
+        return
+    safe = html.escape(txt)
+    st.markdown(
+        f"""
+        <div style="margin-top:1rem;padding:12px 14px;border-radius:8px;background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.12);">
+          <div style="font-size:.7rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">How to reach us</div>
+          <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;">{safe}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 submitted_key = f"submitted_once_{target_form_id}"
 just_submitted_key = f"just_submitted_{target_form_id}"
 form_ready_key = f"form_ready_{target_form_id}"
@@ -238,23 +321,36 @@ if not st.session_state[form_ready_key]:
 # ── 3. HEADER ──
 st.markdown(f"""
 <div class="gf-header">
-  <div class="badge">🚌 PUV Analytics Platform</div>
+  <div class="badge">🚌 Land public transportation feedback</div>
   <h1 style="color:var(--navy);">{form_meta.get('title')}</h1>
   <p class="desc">{form_meta.get('description')}</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ── 4. FORM ──
+locked_one_response = (
+    (not allow_multiple_responses)
+    and (not is_preview)
+    and client_cid
+    and _already_submitted_for_client(target_form_id, client_cid)
+)
+
 if allow_multiple_responses and st.session_state.get(just_submitted_key):
     st.success("✅ Response submitted successfully.")
     st.info("Thank you for your feedback.")
+    _render_reach_out_contact()
     if st.button("Submit another response", type="secondary", key=f"submit_again_{target_form_id}"):
         st.session_state[just_submitted_key] = False
         st.session_state[form_ready_key] = False
         st.rerun()
-elif (not allow_multiple_responses) and st.session_state.get(submitted_key):
-    st.success("✅ Your response has already been submitted.")
-    st.info("This form accepts only one response per user/session.")
+elif (not allow_multiple_responses) and (
+    locked_one_response or st.session_state.get(submitted_key)
+):
+    st.success("✅ Thank you — we have already received your response.")
+    st.info("This survey allows only one submission per device.")
+    _render_reach_out_contact()
+    if not (form_meta.get("reach_out_contact") or "").strip():
+        st.info("If you need to follow up, please contact the survey organizer.")
 elif len(form_schema) > 0:
     question_map = {} 
     with st.form("public_survey_form", clear_on_submit=True):
@@ -276,7 +372,8 @@ elif len(form_schema) > 0:
                 "Short Answer":     "✏️ Short Answer",
                 "Paragraph":        "📝 Paragraph",
                 "Multiple Choice":  "☑️ Multiple Choice",
-                "Rating (Likert)":  "⭐ Likert"
+                "Multiple Select":  "☑️ Multiple Select",
+                "Rating (Likert)":  "⭐ Likert",
             }.get(q_type, q_type)
 
             dim = q.get("servqual_dimension")
@@ -313,6 +410,17 @@ elif len(form_schema) > 0:
                         label_visibility="collapsed",
                     )
                     user_answers[unique_prompt] = ans_mc
+                elif q_type == "Multiple Select":
+                    opts = q.get("options") or []
+                    picked = []
+                    st.markdown(
+                        "<div style='font-size:0.8rem;color:#7c8db5;margin:0 0 6px 0;'>Select all that apply.</div>",
+                        unsafe_allow_html=True,
+                    )
+                    for j, opt in enumerate(opts):
+                        if st.checkbox(opt, key=f"{key}_ms_{j}", label_visibility="visible"):
+                            picked.append(opt)
+                    user_answers[unique_prompt] = picked
                 elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                     scale_max = int(q.get("scale_max") or 5)
                     lbl_low  = q.get("scale_label_low", "")
@@ -350,12 +458,24 @@ elif len(form_schema) > 0:
                     if q_type in ("Short Answer", "Paragraph"):
                         if ans is None or str(ans).strip() == "":
                             missing_required.append(q_info.get("prompt", uprompt))
+                    elif q_type == "Multiple Select":
+                        if not ans or not isinstance(ans, list) or len(ans) == 0:
+                            missing_required.append(q_info.get("prompt", uprompt))
                     else:
                         if ans is None or str(ans).strip() == "":
                             missing_required.append(q_info.get("prompt", uprompt))
 
                 if missing_required:
                     st.error("⚠️ Please answer all required questions before submitting.")
+                elif (
+                    (not allow_multiple_responses)
+                    and (not is_preview)
+                    and client_cid
+                    and _already_submitted_for_client(target_form_id, client_cid)
+                ):
+                    st.warning("We already have a response from this session. Thank you.")
+                    st.session_state[submitted_key] = True
+                    st.rerun()
                 else:
                     demo_answers = {}
                     raw_feedback_list = []
@@ -363,13 +483,18 @@ elif len(form_schema) > 0:
                     general_ratings = []
                     
                     for uprompt, ans in user_answers.items():
-                        if not ans: continue 
-                        
+                        if ans is None:
+                            continue
+                        if isinstance(ans, list) and len(ans) == 0:
+                            continue
+                        if not isinstance(ans, list) and str(ans).strip() == "":
+                            continue
+
                         q_info = question_map[uprompt]
                         dim = q_info.get("servqual_dimension")
                         q_type = q_info.get("q_type")
 
-                        if dim == "Commuter Profile":
+                        if dim == "Commuter Profile" or q_info.get("is_demographic"):
                             demo_answers[q_info["prompt"]] = ans
                         elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                             if dim in dim_scores:
@@ -382,6 +507,7 @@ elif len(form_schema) > 0:
                     payload = {
                         "public_id": target_form_id,
                         "admin_email": form_meta.get("admin_email", ""),
+                        **({"client_submission_id": client_cid} if client_cid else {}),
                         "answers": user_answers,
                         "demo_answers": demo_answers,
                         "raw_feedback": " | ".join(raw_feedback_list) if raw_feedback_list else None,

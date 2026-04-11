@@ -1,26 +1,26 @@
 # servqual_utils.py
-# Central config for the SERVQUAL framework used across the PUV sentiment system.
+# Central config for the SERVQUAL framework (land public transportation context).
 
 SERVQUAL_DIMENSIONS = {
     "Tangibles": {
         "key": "tangibles", "icon": "🚌", "color_css": "tangibles", "hex": "#4a7c59",
-        "desc": "Physical appearance of the vehicle, equipment, and driver's uniform.",
+        "desc": "Looks and condition of vehicles, stops/terminals, equipment, and staff presentation.",
     },
     "Reliability": {
         "key": "reliability", "icon": "🕐", "color_css": "reliability", "hex": "#1a5276",
-        "desc": "Ability to perform the promised service dependably and accurately.",
+        "desc": "Schedules, waiting times, trip predictability, and how reliably service holds up when conditions are tight.",
     },
     "Responsiveness": {
         "key": "responsiveness", "icon": "⚡", "color_css": "responsiveness", "hex": "#6c3483",
-        "desc": "Willingness to help passengers and provide prompt service.",
+        "desc": "Speed of help, handling complaints, and how quickly the system or crew responds to passengers.",
     },
     "Assurance": {
         "key": "assurance", "icon": "🛡️", "color_css": "assurance", "hex": "#7d6608",
-        "desc": "Knowledge, courtesy of the driver, and ability to inspire trust and safety.",
+        "desc": "Competence and courtesy of drivers/operators, safety confidence, and trust in the service.",
     },
     "Empathy": {
         "key": "empathy", "icon": "🤝", "color_css": "empathy", "hex": "#922b21",
-        "desc": "Caring, individualized attention given to passengers.",
+        "desc": "Understanding respondent needs, fairness, and care shown to different kinds of passengers.",
     },
 }
 

@@ -82,6 +82,7 @@ html, body, p, div, span, a, button, label, input, textarea, select { font-famil
 .gf-preview-textarea { width: 100%; border: none; border-bottom: 1.5px solid rgba(84,119,146,0.3); background: transparent; font-size: .88rem; color: var(--muted); padding: .35rem 0; outline: none; resize: none; pointer-events: none; height: 52px; }
 .gf-radio-opt { display: flex; align-items: center; gap: .6rem; padding: .4rem .6rem; border-radius: 5px; font-size: .88rem; color: var(--steel); border: 1px solid var(--bdr); margin-bottom: .3rem; }
 .gf-radio-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--steel); flex-shrink: 0; }
+.gf-check-box { width: 14px; height: 14px; border-radius: 3px; border: 2px solid var(--steel); flex-shrink: 0; display: inline-block; }
 .gf-rating-row { display: flex; gap: .4rem; margin-top: .3rem; }
 .gf-rating-pip { flex: 1; text-align: center; padding: .5rem .2rem; border: 1px solid var(--bdr); border-radius: 5px; font-size: .75rem; color: var(--muted); font-weight: 600; }
 
@@ -146,6 +147,13 @@ def render_question_preview(q: dict, index: int, preview_mode: bool = False):
     elif q_type == "Multiple Choice":
         opts = q.get("options") or ["Option 1"]
         preview = "".join([f'<div class="gf-radio-opt"><div class="gf-radio-dot"></div>{o}</div>' for o in opts])
+    elif q_type == "Multiple Select":
+        opts = q.get("options") or ["Option 1"]
+        preview = "".join([
+            f'<div class="gf-radio-opt"><span class="gf-check-box"></span>{o}</div>' for o in opts[:8]
+        ])
+        if len(opts) > 8:
+            preview += f'<div class="gf-radio-opt" style="opacity:.7;">… +{len(opts) - 8} more</div>'
     elif q_type == "Rating (1-5)":
         preview = _rating_pips()
     else:
@@ -161,6 +169,16 @@ def render_question_preview(q: dict, index: int, preview_mode: bool = False):
 """, unsafe_allow_html=True)
 
 def render_dimension_cards():
+    st.markdown(
+        """
+**SERVQUAL** fits **land public transportation** studies whether you focus on day-to-day service, **vehicles and stops**,
+**people** (crew, operators, passengers), **safety and trust**, or wider **current conditions**—for example how **delays,
+congestion, or the travel environment** feel to respondents, or how **fares and cost pressures** tied to operations show up in their answers.
+Keep your wording as general or specific as your project needs; then **tag** each Likert question to the dimension it best represents so the dashboard can summarize cleanly.
+
+**The five dimensions:**
+        """
+    )
     html = '<div class="sq-dim-grid">'
     for dname, d in SERVQUAL_DIMENSIONS.items():
         html += f"""

@@ -5,7 +5,7 @@ from st_supabase_connection import SupabaseConnection
 # ══════════════════════════════════════════
 # 1. SETUP & CSS SHIELD (Daanalytics Theme)
 # ══════════════════════════════════════════
-st.set_page_config(page_title="Settings | PUV Analytics", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="Settings | Land public transportation", page_icon="⚙️", layout="wide")
 
 st.markdown("""
 <style>
@@ -93,7 +93,7 @@ st.markdown("""
 <div class="premium-header">
     <div>
         <h1>System Settings</h1>
-        <p>Manage your researcher profile and AI model configurations.</p>
+        <p>Manage your researcher profile and survey data exports.</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -101,7 +101,7 @@ st.markdown("""
 # ══════════════════════════════════════════
 # 3. TABS LAYOUT
 # ══════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs(["👤 Profile & Security", "🧠 AI Model Config", "💾 Data Management"])
+tab1, tab2 = st.tabs(["👤 Profile & Security", "💾 Data Management"])
 
 # ── TAB 1: PROFILE & SECURITY ──
 with tab1:
@@ -173,25 +173,8 @@ with tab1:
         else:
             st.error("⚠️ Confirmation text incorrect.")
 
-# ── TAB 2: AI CONFIGURATION ──
+# ── TAB 2: DATA MANAGEMENT ──
 with tab2:
-    st.markdown("### XLM-RoBERTa Model Settings")
-    st.info("Fine-tune how the dashboard interprets AI results.")
-    
-    st.markdown("**Confidence Threshold**")
-    st.write("Flag predictions below this score as 'Needs Review'.")
-    
-    if "ai_threshold" not in st.session_state:
-        st.session_state.ai_threshold = 0.65
-        
-    threshold = st.slider("Min Confidence", min_value=0.0, max_value=1.0, value=st.session_state.ai_threshold, step=0.05)
-    
-    if st.button("💾 Save AI Settings"):
-        st.session_state.ai_threshold = threshold
-        st.success(f"✅ Threshold set to {threshold*100:.0f}%!")
-
-# ── TAB 3: DATA MANAGEMENT ──
-with tab3:
     st.markdown("### Export Dataset")
     st.write("Download response data for your Chapters 4 & 5 analysis.")
     
@@ -214,7 +197,7 @@ with tab3:
             st.download_button(
                 label="📥 Download Dataset (CSV)",
                 data=csv_data,
-                file_name="thesis_dataset.csv",
+                file_name="survey_dataset_export.csv",
                 mime="text/csv",
                 use_container_width=True
             )

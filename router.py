@@ -6,7 +6,7 @@ conn = st.connection("supabase", type=SupabaseConnection)
 
 # ── 2. Page config ──
 st.set_page_config(
-    page_title="PUV Sentiment Analysis",
+    page_title="Land public transportation · Sentiment analysis",
     page_icon="🚌",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -254,7 +254,7 @@ public_form_page = st.Page("public_form.py",        title="Take Survey",        
 
 # ── 6. Router ──
 if "form_id" in st.query_params:
-    # Hide sidebar for public commuters taking the survey
+    # Hide sidebar for public respondents taking the survey
     st.html('<style>[data-testid="stSidebarCollapsedControl"] { display: none !important; } [data-testid="stSidebar"] { display: none !important; }</style>')
     pg = st.navigation([public_form_page], position="hidden")
 
@@ -267,7 +267,7 @@ elif st.session_state.get("logged_in", False):
     with st.sidebar:
         st.html("""
         <div class="sidebar-brand">
-          <div class="brand-badge"><span>🚌 PUV Analytics</span></div>
+          <div class="brand-badge"><span>🚌 Land public transportation</span></div>
           <h2>Sentiment<br><em>Analysis</em> Platform</h2>
         </div>
         """)
@@ -296,7 +296,7 @@ elif st.session_state.get("logged_in", False):
 
         st.html("""
         <div class="sidebar-footer">
-          <span class="ver">PUV Sentiment v1.0</span>
+          <span class="ver">LPT sentiment v1.0</span>
         </div>
         """)
 
