@@ -347,7 +347,7 @@ elif (not allow_multiple_responses) and (
     locked_one_response or st.session_state.get(submitted_key)
 ):
     st.success("✅ Thank you — we have already received your response.")
-    st.info("This survey allows only one submission per device.")
+    st.info("This survey allows only one submission.")
     _render_reach_out_contact()
     if not (form_meta.get("reach_out_contact") or "").strip():
         st.info("If you need to follow up, please contact the survey organizer.")

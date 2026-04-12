@@ -6,6 +6,14 @@ from st_supabase_connection import SupabaseConnection
 from servqual_utils import DIM_KEYS
 from components import inject_css, section_head, render_dimension_cards
 
+# Demographics dashboard uses donut-style charts: answers must come from a fixed option list.
+ALLOWED_DEMOGRAPHIC_QTYPES = frozenset({"Multiple Choice", "Multiple Select"})
+
+
+def demographic_qtype_ok(q_type: str | None) -> bool:
+    return (q_type or "") in ALLOWED_DEMOGRAPHIC_QTYPES
+
+
 # ══════════════════════════════════════════
 # PAGE CONFIG & CSS
 # ══════════════════════════════════════════
@@ -197,13 +205,32 @@ def dialog_delete_bulk_questions():
             st.rerun()
 
 
+@st.dialog("Demographics need a fixed list of answers")
+def dialog_demographic_invalid_type():
+    st.markdown(
+        """
+The **Demographics** tab groups answers in **donut (and similar) charts**. That only works when each
+respondent picks from a **fixed set of choices** — not unique text like names, and not numeric scales.
+
+**Allowed** when you turn on **Mark as demographic:**  
+**Multiple Choice** (one option) or **Multiple Select** (several options, e.g. transport modes).
+
+**Do not** mark as demographic: **Short Answer**, **Paragraph**, or **Likert** — those belong elsewhere
+in your survey (e.g. open feedback or SERVQUAL ratings).
+        """
+    )
+    if st.button("OK", type="primary", use_container_width=True):
+        st.session_state.pop("_show_demo_type_dialog", None)
+        st.rerun()
+
+
 # ══════════════════════════════════════════
 # HEADER & METADATA
 # ══════════════════════════════════════════
 try:
     meta_req  = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).limit(1).execute()
     form_meta = meta_req.data[0] if meta_req.data else {
-        "title": "Land public transportation respondent survey",
+        "title": "Land Public Transportation Respondent Survey",
         "description": "Please share your honest experience.",
         "include_demographics": False,
         "allow_multiple_responses": True,
@@ -211,7 +238,7 @@ try:
     }
 except Exception:
     form_meta = {
-        "title": "Land public transportation respondent survey",
+        "title": "Land Public Transportation Respondent Survey",
         "description": "Please share your honest experience.",
         "include_demographics": False,
         "allow_multiple_responses": True,
@@ -267,7 +294,7 @@ st.markdown("""
 <div class="premium-header">
     <div>
         <h1>🛠️ Form Builder</h1>
-        <p>Design your land public transportation respondent survey and manage question logic.</p>
+        <p>Design your Land Public Transportation Respondent Survey and manage question logic.</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -386,8 +413,13 @@ if not st.session_state.preview_mode:
             "Mark as demographic (saved with profile data for the Demographics tab)",
             value=False,
             key="add_q_is_demo",
-            help="Use if you skip the standard respondent profile and ask your own profile fields, or to add extra items (e.g. barangay, income bracket).",
+            help="Only for Multiple Choice or Multiple Select with a fixed list of options (donut charts). Not for free text or Likert.",
         )
+        if is_demographic_q and not demographic_qtype_ok(q_type):
+            st.warning(
+                "**Demographics** charts need **Multiple Choice** or **Multiple Select** — not free text (e.g. name) or Likert. "
+                "Change the question type above, or turn this off."
+            )
 
         st.caption(
             "Saving adds this question to your **live survey link** and to the **dashboard** for **new** responses only. "
@@ -396,7 +428,10 @@ if not st.session_state.preview_mode:
         st.markdown("<div style='margin-top:.5rem'></div>", unsafe_allow_html=True)
         if st.button("💾 Save question to form", use_container_width=True, type="primary"):
             if new_prompt.strip():
-                if q_type in ("Multiple Choice", "Multiple Select") and not new_options:
+                if is_demographic_q and not demographic_qtype_ok(q_type):
+                    st.session_state["_show_demo_type_dialog"] = True
+                    st.rerun()
+                elif q_type in ("Multiple Choice", "Multiple Select") and not new_options:
                     st.warning("Add at least one option for this question type.")
                 elif q_type == "Multiple Select" and len(new_options) < 2:
                     st.warning("Multiple select works best with two or more options.")
@@ -504,7 +539,7 @@ STANDARD_DEMO_QUESTIONS = [
     {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
     {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
     {
-        "prompt": "Which land public transportation modes do you usually use? (Select all that apply)",
+        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
         "q_type": "Multiple Select",
         "options": LPT_TRANSPORT_MODE_OPTIONS,
         "is_required": True,
@@ -721,8 +756,13 @@ else:
                         "Mark as demographic",
                         value=bool(q.get("is_demographic")),
                         key=f"edemo_{qid_str}",
-                        help="Saves answers with profile data for the Demographics dashboard tab.",
+                        help="Only Multiple Choice or Multiple Select (fixed options for donut charts). Not for free text or Likert.",
                     )
+                    if e_demo and not demographic_qtype_ok(e_type):
+                        st.warning(
+                            "**Demographics** charts need **Multiple Choice** or **Multiple Select**. "
+                            "Change the type above, or turn this off."
+                        )
                     e_opts_raw = ""
                     if e_type in ("Multiple Choice", "Multiple Select"):
                         e_opts_raw = st.text_input("Options (comma-separated)", value=", ".join(q.get("options") or []), key=f"eo_{qid_str}")
@@ -744,25 +784,29 @@ else:
                     sv_col, cn_col = st.columns(2)
                     with sv_col:
                         if st.button("💾 Save changes", key=f"save_{qid_str}"):
-                            update_payload = {
-                                "prompt":             e_prompt.strip(),
-                                "q_type":             e_type,
-                                "options":            [o.strip() for o in e_opts_raw.split(",") if o.strip()] if e_opts_raw else [],
-                                "is_required":        e_req,
-                                "is_demographic":     bool(e_demo),
-                                "servqual_dimension": None if e_dim == "None" else e_dim,
-                            }
-                            if e_type == "Rating (Likert)":
-                                update_payload["scale_max"]        = int(e_scale_max)
-                                update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
-                                update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
+                            if e_demo and not demographic_qtype_ok(e_type):
+                                st.session_state["_show_demo_type_dialog"] = True
+                                st.rerun()
                             else:
-                                update_payload["scale_max"]        = None
-                                update_payload["scale_label_low"]  = None
-                                update_payload["scale_label_high"] = None
-                            update_question(q["id"], update_payload)
-                            st.session_state.editing_id = None
-                            st.rerun()
+                                update_payload = {
+                                    "prompt":             e_prompt.strip(),
+                                    "q_type":             e_type,
+                                    "options":            [o.strip() for o in e_opts_raw.split(",") if o.strip()] if e_opts_raw else [],
+                                    "is_required":        e_req,
+                                    "is_demographic":     bool(e_demo),
+                                    "servqual_dimension": None if e_dim == "None" else e_dim,
+                                }
+                                if e_type == "Rating (Likert)":
+                                    update_payload["scale_max"]        = int(e_scale_max)
+                                    update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
+                                    update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
+                                else:
+                                    update_payload["scale_max"]        = None
+                                    update_payload["scale_label_low"]  = None
+                                    update_payload["scale_label_high"] = None
+                                update_question(q["id"], update_payload)
+                                st.session_state.editing_id = None
+                                st.rerun()
                     with cn_col:
                         if st.button("✕ Cancel", key=f"cancel_{qid_str}"):
                             st.session_state.editing_id = None
@@ -770,6 +814,8 @@ else:
 
             st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
 
+        if st.session_state.get("_show_demo_type_dialog"):
+            dialog_demographic_invalid_type()
         if st.session_state.get("_confirm_del_qid") is not None:
             dialog_delete_single_question()
         if st.session_state.get("_confirm_del_bulk_ids"):

@@ -171,7 +171,7 @@ def render_question_preview(q: dict, index: int, preview_mode: bool = False):
 def render_dimension_cards():
     st.markdown(
         """
-**SERVQUAL** fits **land public transportation** studies whether you focus on day-to-day service, **vehicles and stops**,
+**SERVQUAL** fits **Land Public Transportation** studies whether you focus on day-to-day service, **vehicles and stops**,
 **people** (crew, operators, passengers), **safety and trust**, or wider **current conditions**—for example how **delays,
 congestion, or the travel environment** feel to respondents, or how **fares and cost pressures** tied to operations show up in their answers.
 Keep your wording as general or specific as your project needs; then **tag** each Likert question to the dimension it best represents so the dashboard can summarize cleanly.

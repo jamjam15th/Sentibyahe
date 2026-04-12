@@ -16,6 +16,10 @@ Usage
   python scripts/seed_dashboard_demo.py --email you@example.com --clear
 
 Rows are tagged with client_submission_id = seed-dashboard-demo-<n> so you can clear them.
+
+Each row is enriched with standard demographics (for the Demographics tab), legacy transport
+prompts where useful, synthetic SERVQUAL averages + Likert answers if your form had no scales,
+and an extra open-text answer for the Sentiment feedback log.
 """
 from __future__ import annotations
 
@@ -28,6 +32,17 @@ from datetime import datetime, timedelta, timezone
 from supabase import Client, create_client
 
 SEED_PREFIX = "seed-dashboard-demo"
+
+FEEDBACK_SNIPPETS_EXTRA = [
+    "Nakakapagod mag-commute araw-araw pero kailangan talaga.",
+    "Sana mas dumami ang mga bus sa umaga.",
+    "The e-trike was clean; medyo mahal lang ang pamasahe.",
+    "Hindi ko gets yung route ng UV, naliligaw ako.",
+    "Smooth trip, walang problema sa bayad.",
+    "Mainit, walang bentilasyon, pero mabilis.",
+    "Drivers should slow down sa mga crossing.",
+    "Salamat sa libreng sakay program, malaking tulong.",
+]
 
 FEEDBACK_SNIPPETS = [
     "Maayos naman ang byahe kahit medyo siksikan sa jeep.",
@@ -43,7 +58,7 @@ FEEDBACK_SNIPPETS = [
     "Taglish test: okay naman pero sana less waiting time.",
     "The fare is fair for the distance, no issues.",
     "Delikado yung pagbaba, walang designated stop.",
-]
+] + FEEDBACK_SNIPPETS_EXTRA
 
 DEMO_OPTIONS = {
     "What is your age bracket?": ["18-24", "25-34", "35-44", "45-54", "55 and above"],
@@ -59,6 +74,83 @@ TRANSPORT_MULTI = [
     "UV Express / van",
     "Tricycle (for last mile)",
 ]
+
+# Dashboard also recognizes legacy profile prompts (see dashboard.TRANSPORT_DEMO_KEYS).
+LEGACY_TRANSPORT_PRIMARY = "What primary land public transportation mode do you usually use?"
+LEGACY_PUV_MULTI = "Which PUV or transport types do you usually ride or use? (Select all that apply)"
+STANDARD_TRANSPORT_MULTI = (
+    "Which land public transportation modes do you usually use? (Select all that apply)"
+)
+
+SEED_LIKERT_FOR_QUANTITATIVE = [
+    ("tangibles_avg", "[Demo seed] Vehicles & facilities (Tangibles)"),
+    ("reliability_avg", "[Demo seed] Timeliness & reliability (Reliability)"),
+    ("responsiveness_avg", "[Demo seed] Staff responsiveness (Responsiveness)"),
+    ("assurance_avg", "[Demo seed] Safety & assurance (Assurance)"),
+    ("empathy_avg", "[Demo seed] Courtesy & empathy (Empathy)"),
+]
+
+
+def _transport_modes_for_seq(seq: int) -> list[str]:
+    i = seq % len(TRANSPORT_MULTI)
+    j = (seq + 2) % len(TRANSPORT_MULTI)
+    if i == j:
+        j = (j + 1) % len(TRANSPORT_MULTI)
+    return [TRANSPORT_MULTI[i], TRANSPORT_MULTI[j]]
+
+
+def enrich_response_for_dashboard(row: dict, seq: int, rng: random.Random) -> dict:
+    """
+    Pad demo_answers so Demographics charts always have standard columns,
+    fill SERVQUAL *_avg + Likert-style answers when the form had no scales,
+    and add an extra open-text key for Feedback log QA.
+    """
+    out = {**row}
+    demo = dict(out.get("demo_answers") or {})
+    ans = dict(out.get("answers") or {})
+
+    ages = DEMO_OPTIONS["What is your age bracket?"]
+    demo.setdefault("What is your age bracket?", ages[seq % len(ages)])
+    genders = DEMO_OPTIONS["What is your gender?"]
+    demo.setdefault("What is your gender?", genders[seq % len(genders)])
+    occs = DEMO_OPTIONS["What is your primary occupation?"]
+    demo.setdefault("What is your primary occupation?", occs[seq % len(occs)])
+    commutes = DEMO_OPTIONS["How often do you commute?"]
+    demo.setdefault("How often do you commute?", commutes[seq % len(commutes)])
+
+    modes = list(demo.get(STANDARD_TRANSPORT_MULTI) or _transport_modes_for_seq(seq))
+    demo.setdefault(STANDARD_TRANSPORT_MULTI, modes)
+    demo.setdefault(LEGACY_PUV_MULTI, list(modes))
+    if LEGACY_TRANSPORT_PRIMARY not in demo:
+        demo[LEGACY_TRANSPORT_PRIMARY] = modes[0] if modes else TRANSPORT_MULTI[0]
+
+    for k, v in demo.items():
+        ans.setdefault(k, v)
+
+    avg_cols = [
+        "tangibles_avg",
+        "reliability_avg",
+        "responsiveness_avg",
+        "assurance_avg",
+        "empathy_avg",
+    ]
+    if all(out.get(k) is None for k in avg_cols):
+        for col, qtext in SEED_LIKERT_FOR_QUANTITATIVE:
+            val_f = round(rng.uniform(2.6, 4.35), 2)
+            out[col] = val_f
+            ans[qtext] = max(1, min(5, int(round(val_f))))
+        if out.get("general_ratings_avg") is None:
+            out["general_ratings_avg"] = round(rng.uniform(2.75, 4.15), 2)
+        ans.setdefault(
+            "[Demo seed] Overall trip satisfaction (General)",
+            max(1, min(5, int(round(out["general_ratings_avg"])))),
+        )
+
+    ans.setdefault("[Demo seed] Quick follow-up (open text)", _pick_feedback_text(rng))
+
+    out["demo_answers"] = demo
+    out["answers"] = ans
+    return out
 
 
 def _require_env(name: str) -> str:
@@ -233,14 +325,16 @@ def build_minimal_payload(
     """Used when there are no rows in form_questions (dashboard still populates)."""
     text = _pick_feedback_text(rng)
     sentiment_label, sentiment_score = _sentiment_for_text(text, rng)
+    ages = DEMO_OPTIONS["What is your age bracket?"]
+    genders = DEMO_OPTIONS["What is your gender?"]
+    occs = DEMO_OPTIONS["What is your primary occupation?"]
+    commutes = DEMO_OPTIONS["How often do you commute?"]
     demo_answers = {
-        "What is your age bracket?": rng.choice(DEMO_OPTIONS["What is your age bracket?"]),
-        "What is your gender?": rng.choice(DEMO_OPTIONS["What is your gender?"]),
-        "What is your primary occupation?": rng.choice(DEMO_OPTIONS["What is your primary occupation?"]),
-        "Which land public transportation modes do you usually use? (Select all that apply)": rng.sample(
-            TRANSPORT_MULTI, k=rng.randint(1, 3)
-        ),
-        "How often do you commute?": rng.choice(DEMO_OPTIONS["How often do you commute?"]),
+        "What is your age bracket?": ages[seq % len(ages)],
+        "What is your gender?": genders[seq % len(genders)],
+        "What is your primary occupation?": occs[seq % len(occs)],
+        STANDARD_TRANSPORT_MULTI: _transport_modes_for_seq(seq),
+        "How often do you commute?": commutes[seq % len(commutes)],
     }
     answers = {
         **{k: v for k, v in demo_answers.items()},
@@ -346,7 +440,7 @@ def main() -> None:
             row = build_payload(public_id, admin_email, i, created, kq, rng)
         else:
             row = build_minimal_payload(public_id, admin_email, i, created, rng)
-        batch.append(row)
+        batch.append(enrich_response_for_dashboard(row, i, rng))
 
     client.table("form_responses").insert(batch).execute()
     print(

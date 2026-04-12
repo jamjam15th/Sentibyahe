@@ -18,7 +18,7 @@ if css_path.exists():
     load_local_css(css_path)
 
 st.set_page_config(
-    page_title="Land public transportation · Sentiment analysis",
+    page_title="Land Public Transportation · Sentiment analysis",
     page_icon="🚌",
     initial_sidebar_state="collapsed",
     layout="wide",
@@ -104,7 +104,7 @@ def render_card_header(active):
     card_title = "Welcome back" if active == "login" else "Join the platform"
     st.html(f"""
     <div class="mobile-badge-wrapper">
-        <div class="lp-badge"><span>🚌 Land public transportation analytics</span></div>
+        <div class="lp-badge"><span>🚌 Land Public Transportation Analytics</span></div>
     </div>
     <div class="card-header">
         <span class="card-label">Secure Access</span>
@@ -196,9 +196,9 @@ with left_col:
     <div class="left-container">
       <div class="acc-bar"></div>
       <div class="text-container">
-        <div class="lp-badge"><span>🚌 Land public transportation analytics</span></div>
+        <div class="lp-badge"><span>🚌 Land Public Transportation Analytics</span></div>
         <h1 class="lp-h1">Understanding the<br><em>Voice</em> of Every<br>Respondent</h1>
-        <p class="lp-desc">Real-time sentiment analysis for land public transportation — supporting planners, operators, and policymakers with data-driven insights.</p>
+        <p class="lp-desc">Real-time sentiment analysis for Land Public Transportation — supporting planners, operators, and policymakers with data-driven insights.</p>
       </div>
     </div>
     """)

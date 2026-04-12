@@ -169,7 +169,7 @@ tab_single, tab_batch, tab_compare = st.tabs(
 )
 
 with tab_single:
-    st.write("**Type a short comment (English, Tagalog, or mixed is okay):**")
+    st.write("**Type a short comment (English, Tagalog, or Taglish):**")
     user_input = st.text_area("", placeholder="Example: Sobrang init sa loob ng jeep...", height=120, label_visibility="collapsed")
     
     if st.button("🚀 Analyze Sentiment"):
@@ -258,19 +258,15 @@ with tab_compare:
         f"""
 **Our model vs baselines — what this tab is for**
 
-1. **Your app already chose a mood (positive / neutral / negative)** for each comment using **{OUR_MODEL_DISPLAY_NAME}** — a model tuned for multilingual text, including **English, Tagalog, and mixed** wording.
+1. **Model Comparison Overview** - This section presents a **side-by-side comparison** between our fine-tuned sentiment analysis model and baseline models. The goal is to evaluate how effectively each model classifies feedback related to **land public transportation**.
 
-2. **Here you can run a second model** (“baseline”) on the **same comments** and see whether it **agrees** or **disagrees** with what is saved.
+2. **Purpose of Comparison** - The comparison demonstrates why our model is **better suited** for transportation sentiment analysis and allows users to see the **strengths and weaknesses** of each approach.
 
-3. **Why compare?** Baselines are **general-purpose** checkpoints. **{OUR_MODEL_DISPLAY_NAME}** is the model **this app is built around** for **land public transportation** feedback. When a baseline **disagrees**, read the comment — you often see **short Tagalog or mixed** lines where a generic model **misreads tone**.
+3. **Models Included** - **Fine-tuned Model (Primary Model):** A customized model trained on **transportation-related data** to improve **accuracy** and **contextual understanding**. - **Baseline Models:** General-purpose sentiment models used as **benchmarks** for comparison.
 
-4. **Why our model is a better fit than these baselines (for this app)**  
-   - **Languages:** **{OUR_MODEL_DISPLAY_NAME}** runs on **multilingual** text in **one** model. Several baselines are **English-first** (for example SST-2–style or English Twitter sentiment), so **Tagalog or Taglish** comments are **out of distribution** for them and more likely to be wrong or shaky.  
-   - **Same labels end-to-end:** We need **positive / neutral / negative** everywhere. Baselines trained on **star ratings** or **two-class** sentiment need **extra mapping** to three classes, which adds noise on **very short** answers.  
-   - **Style of text:** Survey comments look like **brief, informal** sentences — closer to **social / Twitter-style** training than to **long movie reviews** or **product star ratings**. Our backbone is chosen for that **short, noisy, multilingual** setting.  
-   - **What “better” means:** Not a guarantee on every row. It means **for your respondents’ language and format**, our model is **purpose-built**; disagreements in the table are **evidence** of where a baseline **struggles** and ours **stays aligned** with how you labeled the product.
+4. **Evaluation Criteria** - Models are evaluated based on **accuracy** in sentiment classification (**positive, neutral, negative**), ability to understand **transportation-related context**, and **consistency** across feedback samples.
 
-**Your stored data does not change.** Only the extra baseline scores are computed on this screen for you to review.
+5. **Why Results May Differ** - Differences occur due to variations in **training datasets**, **model architecture**, and level of **domain-specific fine-tuning**. General models may misinterpret **transportation-related terms**, while the fine-tuned model is **optimized for this domain**.
         """
     )
 
@@ -344,14 +340,31 @@ with tab_compare:
                         kind_b = choice["kind"]
 
                         nmax = len(df_use)
-                        max_cmp = st.slider(
-                            "How many comments to check (newest first)",
-                            min_value=1,
-                            max_value=max(1, nmax),
-                            value=min(150, max(1, nmax)),
-                            step=1,
-                            key="cmp_max_n",
+
+                        presets = [1, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500]
+                        count_choices = sorted({c for c in presets if 1 <= c <= nmax} | {nmax})
+                        if not count_choices:
+                            count_choices = [max(1, nmax)]
+
+                        def _limit_label(n: int) -> str:
+                            if n >= nmax:
+                                return f"All {nmax} comment(s) in this date range (newest first)"
+                            return f"Only the {n} newest comment(s) — skip the older {nmax - n}"
+
+                        limit_pairs = [(n, _limit_label(n)) for n in count_choices]
+                        default_n = min(50, nmax)
+                        default_i = min(
+                            range(len(limit_pairs)),
+                            key=lambda i: abs(limit_pairs[i][0] - default_n),
                         )
+                        pick_lbl = st.selectbox(
+                            "How many comments should we send to the baseline model?",
+                            [lbl for _, lbl in limit_pairs],
+                            index=default_i,
+                            key="cmp_limit_pick",
+                            help="Starts from the latest submission and works backward. Smaller numbers run faster.",
+                        )
+                        max_cmp = next(n for n, lbl in limit_pairs if lbl == pick_lbl)
 
                         if st.button("Run comparison", type="primary", key="cmp_run_btn"):
                             rows_cmp = []
@@ -428,19 +441,24 @@ with tab_compare:
     with st.expander("Quick guide (for anyone using this tab)", expanded=False):
         st.markdown(
             f"""
-**What am I looking at?**  
-Two opinions on the same comment: **{OUR_MODEL_DISPLAY_NAME}** (already saved in the app) and **one baseline model** you select. Both output **positive, neutral, or negative**.
+**Understanding the Comparison Interface**
 
-**Why would they disagree?**  
-Different models were trained on different data. Some baselines lean **English-only** or need **star ratings** turned into three labels. **{OUR_MODEL_DISPLAY_NAME}** is **multilingual** and already outputs the **same three labels** the dashboard stores.
+This page provides a comparative analysis of two sentiment classifications for a given piece of feedback: the results from our **Fine-tuned XLM-RoBERTa** (the primary model used in the application) and a **baseline model** of your selection. Both models categorize the feedback into **positive, neutral, or negative** sentiments.
 
-**Why is ours usually the right choice here?**  
-Because your respondents mix **English and Tagalog** and write **short comments**. Multilingual sentiment + one consistent three-way scale matches that better than **English-only** or **mapped-from-stars** baselines.
+**Why do the models yield different results?**
 
-**What does “Baseline agreed with ours” mean?**  
-Out of the comments you ran, that **percentage** had the **same** three-way label from both models. It is **not** a formal accuracy score — just **agreement**. When they disagree, **read the comment** to judge what makes sense.
+Variances in predictions stem from differences in underlying training data and model architecture. Many baseline models are restricted to **monolingual English datasets** or derive sentiment by mapping **5-star rating scales** into categorical labels. Conversely, our **fine-tuned XLM-RoBERTa** is **natively multilingual** and explicitly designed to output the exact **ternary classification** used by this dashboard.
 
-**Will this change my saved results?**  
-**No.** The baseline is only calculated on this page. Your dashboard and exports still use the labels from **{OUR_MODEL_DISPLAY_NAME}**.
+**Why is our fine-tuned model optimal for this dataset?**
+
+The collected feedback frequently consists of **concise, code-switched (English and Tagalog) text**. A specialized multilingual model is inherently better equipped to process these linguistic nuances and accurately capture contextual sentiment compared to **standard monolingual** or **rating-mapped baselines**.
+
+**How should the "Agreement" percentage be interpreted?**
+
+This percentage indicates how often both models assigned the **identical sentiment label** to a specific comment. Please note that this is strictly a measure of **agreement**, not an **empirical accuracy score**. In instances of divergence, we recommend a **manual review** of the comment to determine the most contextually accurate label.
+
+**Will these comparisons affect my saved data?**
+
+**No.** Baseline predictions are generated dynamically for comparative purposes on this specific page only. Your core dashboard metrics and exported datasets will remain unaltered, relying solely on the official labels generated by the **Fine-tuned XLM-RoBERTa** model.
             """
         )

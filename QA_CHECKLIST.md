@@ -4,7 +4,7 @@ Use a **test account** or disposable data when steps delete or wipe responses. M
 
 ### Demo data (optional)
 
-To fill the **Dashboard** without manual survey submissions, run `scripts/seed_dashboard_demo.py` (see the file docstring). Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then e.g. `python scripts/seed_dashboard_demo.py --email YOUR_LOGIN_EMAIL --count 25`. Remove seeded rows with `--clear`. Open **Form Builder** once first so `form_meta` exists; if you have no questions yet, use `--force-minimal`.
+To fill the **Dashboard** without manual survey submissions, run `scripts/seed_dashboard_demo.py` (see the file docstring). Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then e.g. `python scripts/seed_dashboard_demo.py --email YOUR_LOGIN_EMAIL --count 35`. Seeded rows are **enriched** for **Demographics**, **SERVQUAL / Quantitative** (if your form has no Likert), and an extra open-text line for the **Sentiment** feedback log. Remove seeded rows with `--clear`. Open **Form Builder** once first so `form_meta` exists; if you have no questions yet, use `--force-minimal`.
 
 ---
 

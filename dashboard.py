@@ -307,7 +307,6 @@ TRANSPORT_DEMO_KEYS = (
     "Which land public transportation modes do you usually use? (Select all that apply)",
     "Which PUV or transport types do you usually ride or use? (Select all that apply)",
     "What primary land public transportation mode do you usually use?",
-    "What primary PUV type do you usually ride?",
 )
 
 
@@ -379,7 +378,7 @@ def render_dashboard():
 
     # ── Timestamps ──
     if "created_at" in df_raw.columns:
-        df_raw["created_at"] = pd.to_datetime(df_raw["created_at"], utc=True).dt.tz_localize(None)
+        df_raw["created_at"] = pd.to_datetime(df_raw["created_at"], format='ISO8601', utc=True).dt.tz_localize(None)
         df = df_raw[
             (df_raw["created_at"].dt.date >= date_from) &
             (df_raw["created_at"].dt.date <= date_to)
@@ -619,18 +618,6 @@ def render_dashboard():
                       </div>
                     </div>""", unsafe_allow_html=True)
 
-                # FIX #6: "Needs Attention" only flags actual SERVQUAL dims
-                servqual_only_means = {k: v for k, v in dim_means.items() if k != "General Ratings"}
-                if servqual_only_means:
-                    weakest = min(servqual_only_means, key=servqual_only_means.get)
-                    st.markdown(f"""
-                    <div style="background:rgba(176,58,46,0.07);border:1px solid rgba(176,58,46,0.2);
-                                border-left:4px solid #b03a2e;border-radius:7px;padding:.7rem 1rem;margin-top:.8rem;">
-                      <div style="font-size:.65rem;font-weight:700;color:#b03a2e;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.2rem;">⚠ Needs Attention</div>
-                      <div style="font-size:.85rem;font-weight:700;color:rgb(26,50,99);">{weakest}</div>
-                      <div style="font-size:.72rem;color:rgb(120,148,172);">Lowest SERVQUAL dimension score</div>
-                    </div>""", unsafe_allow_html=True)
-
                 # FIX #9: General Ratings shown separately below, not in radar
                 if has_general_ratings and general_ratings_avg_val is not None:
                     gr_color = "#4a7c59" if general_ratings_avg_val >= 4 else "#8b9dc3" if general_ratings_avg_val >= 3 else "#b03a2e"
@@ -826,7 +813,6 @@ def render_dashboard():
                     "What is your age bracket?",
                     "What is your gender?",
                     "What is your primary occupation?",
-                    "What primary PUV type do you usually ride?",
                     "What primary land public transportation mode do you usually use?",
                     "Which PUV or transport types do you usually ride or use? (Select all that apply)",
                     "Which land public transportation modes do you usually use? (Select all that apply)",
@@ -923,7 +909,7 @@ def render_dashboard():
                     vals = df["demo_answers"].apply(
                         lambda x: x.get(key) if isinstance(x, dict) else None
                     )
-                    if vals.dropna().nunique() >= 2:
+                    if vals.dropna().astype(str).nunique() >= 2:
                         usable_context_keys.append(key)
 
                 if usable_context_keys:
@@ -977,7 +963,7 @@ def render_dashboard():
                     continue
                 for question, answer in ans_map.items():
                     score = pd.to_numeric(answer, errors="coerce")
-                    if pd.isna(score):
+                    if pd.Series(score).isna().all():
                         continue  # keep only numeric answers (Likert-like)
                     question_text = str(question)
                     base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
