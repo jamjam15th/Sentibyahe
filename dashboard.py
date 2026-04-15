@@ -474,6 +474,20 @@ def _demo_chart_specs_all(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
     return specs
 
 
+def _is_demographic_question(prompt: str) -> bool:
+    """Check if a question prompt is a demographic/standard profile question."""
+    demographic_prompts = {
+        "What is your age bracket?",
+        "What is your gender?",
+        "What is your primary occupation?",
+        "How often do you commute?",
+    }
+    demographic_prompts.update(TRANSPORT_DEMO_KEYS)
+    # Case-insensitive comparison
+    prompt_lower = prompt.lower().strip() if prompt else ""
+    return any(prompt_lower == dp.lower().strip() for dp in demographic_prompts)
+
+
 def _format_demo_cell(v):
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
@@ -1780,8 +1794,8 @@ def render_dashboard():
         st.caption("Bar charts showing answer counts for each multiple choice/select question. For multiple select questions, respondents can select more than one answer, so totals may exceed the number of responses.")
         
         try:
-            # Get multiple choice/select questions only
-            mc_questions = [q for q in all_questions if q.get("q_type") in ("Multiple Choice", "Multiple Select")]
+            # Get multiple choice/select questions only, excluding demographic questions
+            mc_questions = [q for q in all_questions if q.get("q_type") in ("Multiple Choice", "Multiple Select") and not _is_demographic_question(q.get("prompt", ""))]
             
             if not mc_questions:
                 st.info("No multiple choice or multiple select questions in this form.")

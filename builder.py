@@ -309,30 +309,40 @@ def dialog_delete_form_confirmation():
             st.rerun()
 
 
-@st.dialog("Manage Forms", width="large")
-def dialog_manage_forms():
-    st.markdown("**Active Forms**")
+@st.dialog("Confirm Delete Multiple Forms")
+def dialog_delete_multiple_forms_confirmation():
+    form_ids = st.session_state.get("_confirm_delete_multiple_forms", [])
     forms = fetch_active_forms(admin_email)
+    forms_to_delete = [f for f in forms if f["form_id"] in form_ids]
     
-    for form in forms:
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-        with col1:
-            st.write(f"**{form['title']}**")
-            st.caption(form.get('description', 'No description'))
-        with col2:
-            st.metric("Responses", f"{len([x for x in forms if x['form_id'] == form['form_id']])}")
-        with col3:
-            if st.button("Edit", key=f"edit_{form['form_id']}", use_container_width=True):
-                st.session_state._edit_form_id = form['form_id']
-                st.session_state._show_edit_form = True
-        with col4:
-            if st.button("🗑️ Delete", key=f"delete_{form['form_id']}", use_container_width=True):
-                st.session_state._confirm_delete_form_id = form['form_id']
-                st.rerun()
+    if not forms_to_delete:
+        st.error("No forms selected")
+        return
     
-    if st.button("Close", use_container_width=True):
-        st.session_state.pop("_show_manage_forms", None)
-        st.rerun()
+    st.warning(f"⚠️ **Delete {len(forms_to_delete)} form(s)?**")
+    st.markdown("This will permanently delete:")
+    for form in forms_to_delete:
+        st.markdown(f"- **{form['title']}** ({len([x for x in forms if x['form_id'] == form['form_id']])} responses)")
+    
+    st.markdown("**This cannot be undone.**")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Delete All", type="primary", use_container_width=True):
+            for form_id in form_ids:
+                delete_form_permanently(form_id, admin_email)
+            refresh_form_list(admin_email)
+            st.session_state.pop("_confirm_delete_multiple_forms", None)
+            st.success(f"{len(forms_to_delete)} form(s) deleted.")
+            st.rerun()
+    
+    with col2:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.pop("_confirm_delete_multiple_forms", None)
+            st.rerun()
+
+
+
 
 
 # ══════════════════════════════════════════
@@ -438,14 +448,11 @@ if not available_forms:
         if st.button("➕ Create Your First Form", type="primary", use_container_width=True):
             st.session_state._show_create_form = True
     with fsb2:
-        if st.button("⚙️ Manage Forms", use_container_width=True):
-            st.session_state._show_manage_forms = True
+        st.markdown("")
     
     # Trigger dialogs
     if st.session_state.get("_show_create_form"):
         dialog_create_form()
-    elif st.session_state.get("_show_manage_forms"):
-        dialog_manage_forms()
     
     st.stop()
 
@@ -473,14 +480,13 @@ with sc2:
         st.session_state._show_create_form = True
 
 with sc3:
-    if st.button("⚙️ Manage", use_container_width=True, help="Manage all forms"):
-        st.session_state._show_manage_forms = True
+    st.markdown("")
 
 # Trigger dialogs (only one at a time via if/elif)
 if st.session_state.get("_show_create_form"):
     dialog_create_form()
-elif st.session_state.get("_show_manage_forms"):
-    dialog_manage_forms()
+elif st.session_state.get("_confirm_delete_multiple_forms"):
+    dialog_delete_multiple_forms_confirmation()
 elif st.session_state.get("_confirm_delete_form_id"):
     dialog_delete_form_confirmation()
 elif st.session_state.get("_show_demo_type_dialog"):
@@ -502,9 +508,9 @@ if not form_is_selected:
     st.stop()
 
 # ══════════════════════════════════════════
-# TABS: SETTINGS vs QUESTIONS
+# TABS: SETTINGS vs QUESTIONS vs MANAGE FORMS
 # ══════════════════════════════════════════
-tab_settings, tab_questions, tab_info = st.tabs(["⚙️ Settings", "📝 Questions", "ℹ️ SERVQUAL"])
+tab_settings, tab_questions, tab_manage_forms, tab_info = st.tabs(["⚙️ Settings", "📝 Questions", "🗑️ Manage Forms", "ℹ️ SERVQUAL"])
 
 with tab_settings:
     st.markdown("### Survey Settings")
@@ -764,19 +770,11 @@ with tab_questions:
     LPT_TRANSPORT_MODE_OPTIONS = [
         "Jeepney",
         "Modern jeepney / E-jeep",
-        "Ordinary bus",
-        "Air-conditioned bus",
+        "bus",
         "UV Express",
-        "Van pool (UV-style)",
         "Tricycle",
-        "Motorcycle taxi (habal-habal)",
         "Train (MRT / LRT / PNR)",
-        "Taxi",
         "TNVS (Grab, etc.)",
-        "Ferry / boat",
-        "Walking / cycling",
-        "Company or school service",
-        "Private car (as passenger)",
         "Other",
     ]
 
@@ -937,11 +935,21 @@ with tab_questions:
                 with sa_col:
                     if st.button("☑ Select all" if not all_selected else "☐ Deselect all", use_container_width=True):
                         if not all_selected:
+                            # Select all
                             st.session_state.selected_ids |= all_visible_ids
+                            
+                            # 🔥 IMPORTANT: Update checkbox UI states
+                            for q in visible_questions:
+                                st.session_state[f"chk_{q['id']}"] = True
                         else:
+                            # Deselect all
                             st.session_state.selected_ids -= all_visible_ids
-                        st.rerun()
+                            
+                            # 🔥 IMPORTANT: Update checkbox UI states
+                            for q in visible_questions:
+                                st.session_state[f"chk_{q['id']}"] = False
 
+                        st.rerun()
             st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
 
             # ══════════════════════════════════════════
@@ -1082,6 +1090,96 @@ with tab_questions:
                                 st.rerun()
 
                 st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
+with tab_manage_forms:
+    st.markdown("### 🗑️ Manage Forms")
+    
+    forms = fetch_active_forms(admin_email)
+    
+    # Initialize selected forms list if not exists
+    if "_selected_delete_forms" not in st.session_state:
+        st.session_state._selected_delete_forms = []
+    
+    # Header with selection counter
+    h1, h2 = st.columns([2, 1])
+    with h1:
+        st.markdown("")
+    with h2:
+        n_selected = len(st.session_state._selected_delete_forms)
+        st.markdown(f"<div style='text-align:right;'><span style='font-weight:700; color:#3b5bdb;'>{n_selected}</span> selected</div>", unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Callback for Select All checkbox
+# Callback for Select All checkbox
+    def toggle_all_forms():
+        if st.session_state.get("toggle_all_forms"):
+            # Checkbox was just checked - select all
+            st.session_state._selected_delete_forms = [f['form_id'] for f in forms]
+            
+            # 🛠️ FIX: Explicitly update the session state of each individual checkbox
+            for form in forms:
+                st.session_state[f"chk_{form['form_id']}"] = True
+                
+        else:
+            # Checkbox was just unchecked - deselect all
+            st.session_state._selected_delete_forms = []
+            
+            # 🛠️ FIX: Explicitly clear the session state of each individual checkbox
+            for form in forms:
+                st.session_state[f"chk_{form['form_id']}"] = False
+    
+    # Toggle all checkbox with callback
+    sb1, sb2 = st.columns([1, 3])
+    with sb1:
+        all_checked = len(st.session_state._selected_delete_forms) == len(forms) and len(forms) > 0
+        st.checkbox("Select All", value=all_checked, key="toggle_all_forms", on_change=toggle_all_forms)
+    with sb2:
+        st.markdown("")
+    
+    st.markdown("")
+    
+    # Form list with container key to force re-render on selection changes
+    with st.container(key=f"form_list_{hash(tuple(sorted(st.session_state._selected_delete_forms)))}"):
+        if forms:
+            for form in forms:
+                form_id = form['form_id']
+                is_checked = form_id in st.session_state._selected_delete_forms
+                response_count = len([x for x in forms if x['form_id'] == form_id])
+                
+                # Create row with checkbox, title, and response count
+                row1, row2, row3 = st.columns([0.5, 2.5, 0.8])
+                with row1:
+                    checked = st.checkbox("", value=is_checked, key=f"chk_{form_id}", label_visibility="collapsed")
+                    if checked != is_checked:
+                        if checked:
+                            if form_id not in st.session_state._selected_delete_forms:
+                                st.session_state._selected_delete_forms.append(form_id)
+                        else:
+                            if form_id in st.session_state._selected_delete_forms:
+                                st.session_state._selected_delete_forms.remove(form_id)
+                        st.rerun()
+                
+                with row2:
+                    st.markdown(f"**{form['title']}**", help=form.get('description', ''))
+                
+                with row3:
+                    st.caption(f"{response_count} response{'s' if response_count != 1 else ''}")
+        else:
+            st.info("No forms available")
+    
+    st.divider()
+    
+    # Delete action button
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        delete_disabled = len(st.session_state._selected_delete_forms) == 0
+        if st.button("🗑️ Delete Selected", type="primary" if not delete_disabled else "secondary", use_container_width=True, disabled=delete_disabled):
+            st.session_state._confirm_delete_multiple_forms = st.session_state._selected_delete_forms.copy()
+            st.session_state._selected_delete_forms = []
+            st.rerun()
+    with col2:
+        st.markdown("")
 
 with tab_info:
     st.markdown("### SERVQUAL Framework")
