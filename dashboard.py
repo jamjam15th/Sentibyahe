@@ -299,6 +299,50 @@ def persist_sentiment_batch(rows: list[dict]):
     except Exception:
         pass  # non-critical — TTL cache will pick it up next cycle
 
+def analyze_per_question_sentiments(rows: list[dict]):
+    """Analyze sentiment for each question in question_sentiments JSONB separately."""
+    if not rows:
+        return
+    
+    batch_updates = []
+    for row in rows:
+        response_id = row.get("id")
+        question_sentiments = row.get("question_sentiments", {})
+        
+        if not isinstance(question_sentiments, dict):
+            continue
+        
+        updated = False
+        for q_id, q_data in question_sentiments.items():
+            if not isinstance(q_data, dict):
+                continue
+            
+            # Only analyze if marked for sentiment and currently pending
+            if q_data.get("enable_sentiment") and q_data.get("sentiment") == "pending":
+                text = q_data.get("text", "").strip()
+                if text:
+                    # Analyze this question's text independently
+                    try:
+                        label, score = analyze_text(text)
+                        q_data["sentiment"] = label
+                        updated = True
+                    except Exception:
+                        pass
+        
+        # If any updates, prepare batch save
+        if updated:
+            batch_updates.append({
+                "id": response_id,
+                "question_sentiments": question_sentiments,
+            })
+    
+    # Save all updates
+    if batch_updates:
+        try:
+            conn.client.table("form_responses").upsert(batch_updates, on_conflict="id").execute()
+        except Exception:
+            pass  # non-critical
+
 # ══════════════════════════════════════════
 # STATIC HEADER
 # ══════════════════════════════════════════
@@ -538,8 +582,19 @@ def render_dashboard():
             persist_sentiment_batch(batch_updates)
             # FIX #4: do NOT call fetch_dashboard_data.clear() here.
             # The TTL cache will refresh on the next fragment cycle.
+    
+    # ── Analyze per-question sentiments (NEW) ──
+    # Analyze each question's text independently from question_sentiments JSONB
+    if "question_sentiments" in df.columns:
+        pending_q_rows = df[df["question_sentiments"].notna()].to_dict('records')
+        if pending_q_rows:
+            analyze_per_question_sentiments(pending_q_rows)
 
     # ── Counts ──
+    # Normalize sentiment values to uppercase to handle different formats
+    if sent_col in df.columns:
+        df[sent_col] = df[sent_col].astype(str).str.strip().str.upper()
+    
     sent_valid = (
         df[sent_col].isin(["POSITIVE", "NEUTRAL", "NEGATIVE"])
         if sent_col in df.columns
@@ -547,8 +602,34 @@ def render_dashboard():
     )
     df_sent   = df[sent_valid].copy() if sent_col in df.columns else pd.DataFrame()
     total     = len(df)
-    pos_count = int((df_sent[sent_col] == "POSITIVE").sum()) if not df_sent.empty else 0
-    pos_rate  = (pos_count / len(df_sent) * 100) if len(df_sent) > 0 else 0
+    
+    # Calculate positivity from both sources, but avoid double-counting
+    # Strategy: Use question-level sentiments if available, fall back to response-level
+    all_sentiments_for_rate = []
+    
+    for _, row in df_sent.iterrows():
+        response_level_sent = str(row.get(sent_col, "")).upper().strip() if sent_col in row else ""
+        question_sentiments = row.get("question_sentiments", {})
+        
+        # Check if we have valid question-level sentiments
+        has_question_sentiments = False
+        if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
+            for q_id, q_data in question_sentiments.items():
+                if isinstance(q_data, dict):
+                    if q_data.get("enable_sentiment") is not False:
+                        sentiment = str(q_data.get("sentiment", "")).upper().strip()
+                        if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+                            has_question_sentiments = True
+                            all_sentiments_for_rate.append(sentiment)
+        
+        # ONLY use response-level if NO question-level sentiments
+        if not has_question_sentiments and response_level_sent and response_level_sent != "PENDING":
+            all_sentiments_for_rate.append(response_level_sent)
+    
+    # Calculate counts
+    total_sentiments = len(all_sentiments_for_rate)
+    pos_count = all_sentiments_for_rate.count("POSITIVE")
+    pos_rate = (pos_count / total_sentiments * 100) if total_sentiments > 0 else 0
 
     # ══════════════════════════════════
     # KPI RIBBON
@@ -582,12 +663,14 @@ def render_dashboard():
     # ══════════════════════════════════
     # TABS
     # ══════════════════════════════════
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "🕸 SERVQUAL Radar",
         "📈 Trends",
         "💬 Sentiment",
         "📊 Quantitative",
         "👥 Demographics",
+        "👤 Respondent Details",
+        "📊 Multiple Choice Charts",
     ])
 
     # ─────────────────────────────────
@@ -841,11 +924,78 @@ def render_dashboard():
               Make sure your form has at least one Short Answer or Paragraph question.</p>
             </div>""", unsafe_allow_html=True)
         else:
+            # ── COLLECT ALL SENTIMENT AND CONFIDENCE DATA ONCE ──
+            # Strategy: Use question-level sentiments if available, fall back to response-level
+            all_sentiments_list = []
+            all_confidence_scores = []
+            
+            for _, row in df_sent.iterrows():
+                response_level_sent = str(row.get(sent_col, "")).upper().strip() if sent_col in row else ""
+                response_level_score = row.get("sentiment_score")
+                question_sentiments = row.get("question_sentiments", {})
+                
+                # Check if we have question-level sentiments
+                has_question_sentiments = False
+                if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
+                    # Collect sentiments from question-level ONLY if they're valid
+                    for q_id, q_data in question_sentiments.items():
+                        if isinstance(q_data, dict):
+                            if q_data.get("enable_sentiment") is not False:
+                                sentiment = str(q_data.get("sentiment", "")).upper().strip()
+                                # Only count valid sentiments (exclude PENDING)
+                                if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+                                    has_question_sentiments = True
+                                    all_sentiments_list.append(sentiment)
+                                    
+                                    # Get confidence from question-level data
+                                    confidence = q_data.get("confidence")
+                                    if confidence is None:
+                                        confidence = q_data.get("sentiment_score")
+                                    
+                                    # Fallback to response-level confidence if per-question not available
+                                    if confidence is None:
+                                        confidence = response_level_score
+                                    
+                                    if pd.notna(confidence):
+                                        try:
+                                            all_confidence_scores.append({
+                                                "sentiment": sentiment,
+                                                "confidence": float(confidence)
+                                            })
+                                        except:
+                                            pass
+                
+                # ONLY use response-level sentiment if NO question-level sentiments exist
+                if not has_question_sentiments and response_level_sent and response_level_sent != "PENDING":
+                    all_sentiments_list.append(response_level_sent)
+                    if pd.notna(response_level_score):
+                        try:
+                            all_confidence_scores.append({
+                                "sentiment": response_level_sent,
+                                "confidence": float(response_level_score)
+                            })
+                        except:
+                            pass
+            
+            # Count sentiments
+            sentiment_counts = {
+                "POSITIVE": all_sentiments_list.count("POSITIVE"),
+                "NEUTRAL": all_sentiments_list.count("NEUTRAL"),
+                "NEGATIVE": all_sentiments_list.count("NEGATIVE"),
+            }
+            
+            # ── DISPLAY DISTRIBUTION AND CONFIDENCE ──
             c1, c2 = st.columns([1, 2])
             with c1:
                 st.markdown('<div class="section-head">Distribution</div>', unsafe_allow_html=True)
-                sc = df_sent[sent_col].value_counts().reset_index()
-                sc.columns = ["Sentiment", "Count"]
+                
+                # Create dataframe with explicit order
+                sc = pd.DataFrame([
+                    {"Sentiment": "POSITIVE", "Count": sentiment_counts.get("POSITIVE", 0)},
+                    {"Sentiment": "NEUTRAL", "Count": sentiment_counts.get("NEUTRAL", 0)},
+                    {"Sentiment": "NEGATIVE", "Count": sentiment_counts.get("NEGATIVE", 0)},
+                ])
+                
                 st.altair_chart(
                     alt.Chart(sc)
                     .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
@@ -865,23 +1015,44 @@ def render_dashboard():
                     .properties(height=220),
                     use_container_width=True,
                 )
+                
+                # Show breakdown
+                st.caption(f"Positive: {sentiment_counts.get('POSITIVE', 0)} | Neutral: {sentiment_counts.get('NEUTRAL', 0)} | Negative: {sentiment_counts.get('NEGATIVE', 0)}")
 
                 st.markdown('<div class="section-head">Avg Confidence</div>', unsafe_allow_html=True)
-                if "sentiment_score" in df_sent.columns:
-                    for s, color in [("POSITIVE", "#4a7c59"), ("NEUTRAL", "#8b9dc3"), ("NEGATIVE", "#b03a2e")]:
-                        subset = df_sent[df_sent[sent_col] == s]["sentiment_score"]
-                        if not subset.empty:
-                            pct = float(subset.mean()) * 100
-                            st.markdown(f"""
-                            <div style="margin-bottom:.5rem;">
-                              <div style="display:flex;justify-content:space-between;margin-bottom:.15rem;">
-                                <span style="font-size:.72rem;font-weight:700;color:{color};">{s}</span>
-                                <span style="font-size:.72rem;color:rgb(120,148,172);">{pct:.1f}%</span>
-                              </div>
-                              <div class="conf-bar-wrap">
-                                <div class="conf-bar" style="width:{pct:.1f}%;background:{color};"></div>
-                              </div>
-                            </div>""", unsafe_allow_html=True)
+                
+                # Build confidence dictionary from collected scores
+                confidence_by_sentiment = {
+                    "POSITIVE": [],
+                    "NEUTRAL": [],
+                    "NEGATIVE": [],
+                }
+                
+                # Use the confidence scores already collected
+                for score_data in all_confidence_scores:
+                    sentiment = score_data["sentiment"]
+                    confidence = score_data["confidence"]
+                    if sentiment in confidence_by_sentiment:
+                        confidence_by_sentiment[sentiment].append(confidence)
+                
+                # Display confidence for all sentiments
+                sentiment_list = [("POSITIVE", "#4a7c59"), ("NEUTRAL", "#8b9dc3"), ("NEGATIVE", "#b03a2e")]
+                for s, color in sentiment_list:
+                    scores = confidence_by_sentiment.get(s, [])
+                    if scores:
+                        pct = (sum(scores) / len(scores)) * 100
+                    else:
+                        pct = 0
+                    st.markdown(f"""
+                    <div style="margin-bottom:.5rem;">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:.15rem;">
+                        <span style="font-size:.72rem;font-weight:700;color:{color};">{s}</span>
+                        <span style="font-size:.72rem;color:rgb(120,148,172);">{pct:.1f}%</span>
+                      </div>
+                      <div class="conf-bar-wrap">
+                        <div class="conf-bar" style="width:{pct:.1f}%;background:{color};"></div>
+                      </div>
+                    </div>""", unsafe_allow_html=True)
 
             with c2:
                 st.markdown('<div class="section-head">Feedback Log</div>', unsafe_allow_html=True)
@@ -897,9 +1068,19 @@ def render_dashboard():
                     "How often do you commute?",
                 }
                 log_rows = []
+                
+                # Build a map of question text → question ID from form_questions
+                try:
+                    q_text_to_id = {}
+                    q_res = conn.client.table("form_questions").select("id, prompt").eq("admin_email", admin_email).eq("form_id", current_form_id).execute()
+                    for q_row in (q_res.data or []):
+                        q_text_to_id[q_row.get("prompt", "")] = str(q_row.get("id", ""))
+                except Exception:
+                    q_text_to_id = {}
+                
                 for _, row in df_sent.iterrows():
                     ans_map = row.get("answers", {})
-                    sentiment  = row.get(sent_col, "")
+                    question_sentiments = row.get("question_sentiments", {})
                     confidence = row.get("sentiment_score", None)
                     submitted  = row.get("created_at", None)
                     if not isinstance(ans_map, dict):
@@ -915,25 +1096,50 @@ def render_dashboard():
                         # Skip numeric-only answers (typically Likert); keep open-text answers.
                         if pd.notna(pd.to_numeric(answer_text, errors="coerce")):
                             continue
-                        idx += 1
-                        log_rows.append({
-                            "Response #": f"#{idx}",
-                            "Question": str(question),
-                            "Answer": answer_text,
-                            "Sentiment": sentiment,
-                            "Confidence": f"{confidence*100:.1f}%" if pd.notna(confidence) else "Pending",
-                            "Submitted": submitted,
-                        })
+                        
+                        # Get per-question sentiment from question_sentiments JSONB
+                        q_id = q_text_to_id.get(question)
+                        
+                        if isinstance(question_sentiments, dict) and q_id:
+                            q_data = question_sentiments.get(q_id, {})
+                            if isinstance(q_data, dict):
+                                # SKIP this question entirely if NOT marked for sentiment analysis
+                                if q_data.get("enable_sentiment") is False:
+                                    continue
+                                
+                                # Get sentiment and SKIP if PENDING
+                                q_sentiment = q_data.get("sentiment")
+                                q_sentiment_upper = str(q_sentiment).upper().strip() if q_sentiment else ""
+                                
+                                # Skip if sentiment is not yet analyzed (PENDING or empty)
+                                if not q_sentiment_upper or q_sentiment_upper == "PENDING":
+                                    continue
+                                
+                                # Only add to log if we have a completed sentiment
+                                idx += 1
+                                sentiment_display = q_sentiment_upper
+                                
+                                log_rows.append({
+                                    "Response #": f"#{idx}",
+                                    "Question": str(question),
+                                    "Answer": answer_text,
+                                    "Sentiment": sentiment_display,
+                                    "Confidence": f"{confidence*100:.1f}%" if pd.notna(confidence) else "N/A",
+                                    "Submitted": submitted,
+                                })
 
                 if log_rows:
                     log_df = pd.DataFrame(log_rows)
 
                     def color_sent(val):
+                        # Normalize sentiment value to uppercase
+                        val_upper = str(val).upper().strip() if val else ""
                         return {
                             "POSITIVE": "color:#4a7c59;font-weight:700",
                             "NEGATIVE": "color:#b03a2e;font-weight:700",
                             "NEUTRAL":  "color:#8b9dc3;font-weight:700",
-                        }.get(val, "")
+                            "⏳ PENDING": "color:#ffc570;font-weight:700",
+                        }.get(val_upper if "PENDING" not in str(val) else "⏳ PENDING", "")
 
                     st.dataframe(
                         log_df.style.map(color_sent, subset=["Sentiment"]),
@@ -943,6 +1149,108 @@ def render_dashboard():
                     )
                 else:
                     st.info("No open-text feedback in the selected range.")
+            
+            # ── NEW: PER-QUESTION SENTIMENT BREAKDOWN ──
+            st.markdown('<div class="section-head">Sentiment by Question</div>', unsafe_allow_html=True)
+            st.caption("Shows how many positive, negative, and neutral responses each question received.")
+            
+            # Build sentiment counts per question
+            q_sentiment_data = []
+            
+            if "question_sentiments" in df_sent.columns:
+                try:
+                    q_text_to_id = {}
+                    q_res = conn.client.table("form_questions").select("id, prompt").eq("admin_email", admin_email).eq("form_id", current_form_id).execute()
+                    for q_row in (q_res.data or []):
+                        q_text_to_id[q_row.get("prompt", "")] = str(q_row.get("id", ""))
+                except Exception:
+                    q_text_to_id = {}
+                
+                for _, row in df_sent.iterrows():
+                    question_sentiments = row.get("question_sentiments", {})
+                    
+                    if isinstance(question_sentiments, dict):
+                        for q_id, q_data in question_sentiments.items():
+                            if isinstance(q_data, dict):
+                                # Get question text
+                                ans_map = row.get("answers", {})
+                                question_text = None
+                                
+                                # Find the question text for this q_id
+                                for q_text, qid in q_text_to_id.items():
+                                    if qid == q_id:
+                                        question_text = q_text
+                                        break
+                                
+                                if not question_text:
+                                    continue
+                                
+                                # Only count if marked for sentiment analysis
+                                if q_data.get("enable_sentiment") is False:
+                                    continue
+                                
+                                sentiment = q_data.get("sentiment")
+                                if sentiment:
+                                    sentiment_upper = str(sentiment).upper().strip()
+                                    if sentiment_upper != "PENDING" and sentiment_upper in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+                                        q_sentiment_data.append({
+                                            "Question": question_text,
+                                            "Sentiment": sentiment_upper
+                                        })
+            
+            if q_sentiment_data:
+                q_sent_df = pd.DataFrame(q_sentiment_data)
+                
+                # Create pivot table - counts per sentiment per question
+                q_pivot = q_sent_df.groupby(["Question", "Sentiment"]).size().reset_index(name="Count")
+                
+                # Ensure all sentiments appear for each question
+                all_questions = q_pivot["Question"].unique()
+                all_sentiments = ["POSITIVE", "NEUTRAL", "NEGATIVE"]
+                
+                full_pivot = []
+                for q in all_questions:
+                    for s in all_sentiments:
+                        count = q_pivot[(q_pivot["Question"] == q) & (q_pivot["Sentiment"] == s)]["Count"].values
+                        full_pivot.append({
+                            "Question": q,
+                            "Sentiment": s,
+                            "Count": int(count[0]) if len(count) > 0 else 0
+                        })
+                
+                full_pivot_df = pd.DataFrame(full_pivot)
+                
+                if not full_pivot_df.empty:
+                    chart = (
+                        alt.Chart(full_pivot_df)
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("Count:Q", title="Number of Responses"),
+                            y=alt.Y("Question:N", title="", sort="-x"),
+                            color=alt.Color(
+                                "Sentiment:N",
+                                scale=alt.Scale(
+                                    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+                                    range=["#4a7c59", "#8b9dc3", "#b03a2e"],
+                                ),
+                                legend=alt.Legend(title="Sentiment")
+                            ),
+                            tooltip=["Question:N", "Sentiment:N", "Count:Q"],
+                        )
+                        .properties(height=max(300, len(all_questions) * 40))
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                    
+                    # Also show as a table for detailed view
+                    st.markdown('<div class="section-head">Sentiment Counts by Question</div>', unsafe_allow_html=True)
+                    pivot_table = full_pivot_df.pivot(index="Question", columns="Sentiment", values="Count").fillna(0).astype(int)
+                    pivot_table["Total"] = pivot_table.sum(axis=1)
+                    pivot_table = pivot_table[["POSITIVE", "NEUTRAL", "NEGATIVE", "Total"]]
+                    st.dataframe(pivot_table, use_container_width=True)
+                else:
+                    st.info("No per-question sentiment data available.")
+            else:
+                st.info("No per-question sentiment analysis available. Enable sentiment analysis for questions in Form Builder.")
 
     # ─────────────────────────────────
     # TAB 4 — QUANTITATIVE
@@ -975,63 +1283,6 @@ def render_dashboard():
               (they appear as General Ratings) in Form Builder.</p>
             </div>""", unsafe_allow_html=True)
         else:
-            if "demo_answers" in df.columns:
-                context_keys = sorted({
-                    k
-                    for ans in df["demo_answers"].dropna()
-                    if isinstance(ans, dict)
-                    for k in ans.keys()
-                })
-                usable_context_keys = []
-                for key in context_keys:
-                    vals = df["demo_answers"].apply(
-                        lambda x: x.get(key) if isinstance(x, dict) else None
-                    )
-                    if vals.dropna().astype(str).nunique() >= 2:
-                        usable_context_keys.append(key)
-
-                if usable_context_keys:
-                    st.markdown('<div class="section-head">Score by Selected Context</div>', unsafe_allow_html=True)
-                    selected_context = st.selectbox(
-                        "Group scores by",
-                        options=usable_context_keys,
-                        key="quant_context_group",
-                    )
-                    df["context_group"] = df["demo_answers"].apply(
-                        lambda x: x.get(selected_context) if isinstance(x, dict) else None
-                    )
-                    df_grouped = df.dropna(subset=["context_group"])
-                    avail_cols = [v for v in all_dim_cols.values() if v in df_grouped.columns]
-
-                    if not df_grouped.empty and avail_cols:
-                        grp_agg = df_grouped.groupby("context_group")[avail_cols].mean().reset_index()
-                        grp_long = grp_agg.melt("context_group", var_name="dim_col", value_name="Score")
-                        inv_map = {v: k for k, v in all_dim_cols.items()}
-                        grp_long["Dimension"] = grp_long["dim_col"].map(inv_map)
-                        grp_long = grp_long.dropna(subset=["Dimension", "Score"])
-
-                        if not grp_long.empty:
-                            pal = scoped_palette(grp_long["Dimension"].unique().tolist())
-                            st.altair_chart(
-                                alt.Chart(grp_long)
-                                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
-                                .encode(
-                                    x=alt.X("context_group:N", axis=alt.Axis(labelAngle=-20), title="Group"),
-                                    y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 5])),
-                                    color=alt.Color(
-                                        "Dimension:N",
-                                        scale=alt.Scale(
-                                            domain=list(pal.keys()),
-                                            range=list(pal.values()),
-                                        ),
-                                    ),
-                                    xOffset="Dimension:N",
-                                    tooltip=["context_group:N", "Dimension:N", alt.Tooltip("Score:Q", format=".2f")],
-                                )
-                                .properties(height=280),
-                                use_container_width=True,
-                            )
-
             st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
             likert_rows = []
             for _, row in df.iterrows():
@@ -1133,8 +1384,6 @@ def render_dashboard():
           </div>
           <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
             Data comes from the <strong>respondent profile</strong> block and/or any questions you marked as <strong>demographic</strong> in Form Builder.<br>
-            <strong>Donuts:</strong> how often each option was chosen. For <strong>transport (select all that apply)</strong>, one person can count in several slices.<br>
-            <strong>Table below:</strong> each row is one respondent—profile answers beside their <strong>feedback text</strong>, <strong>sentiment</strong>, and <strong>rating averages</strong> so you can read answers in context.
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1151,81 +1400,451 @@ def render_dashboard():
                   <p>No demographic responses recorded yet.</p>
                 </div>""", unsafe_allow_html=True)
             else:
+                # ════════════════════════════════════════════════════════════
+                # CHART TYPE SELECTOR
+                # ════════════════════════════════════════════════════════════
+                st.markdown('<div class="section-head">📊 Choose Visualization Type</div>', unsafe_allow_html=True)
+                chart_type = st.radio(
+                    "Select how to view demographic data:",
+                    options=["donut", "bar", "stacked", "table"],
+                    format_func=lambda x: {
+                        "donut": "🍩 Donut Charts",
+                        "bar": "📊 Horizontal Bar Chart",
+                        "stacked": "📈 Stacked Bar Chart",
+                        "table": "📋 Table with Counts",
+                    }[x],
+                    horizontal=True,
+                    key="demo_chart_type"
+                )
+                
+                st.markdown("---")
+                
                 demo_specs = _demo_chart_specs_all(demo_df)
                 if not demo_specs:
                     st.dataframe(demo_df, use_container_width=True, hide_index=True)
                 else:
-                    pairs = [
-                        (demo_specs[i], demo_specs[i + 1] if i + 1 < len(demo_specs) else None)
-                        for i in range(0, len(demo_specs), 2)
-                    ]
-                    for spec_l, spec_r in pairs:
-                        cl, cr = st.columns(2)
-                        for col_w, spec in [(cl, spec_l), (cr, spec_r)]:
-                            if spec is None:
-                                continue
-                            q, label = spec[0], spec[1]
-                            with col_w:
-                                vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
-                                vc.columns = [label, "Count"]
-                                st.altair_chart(
-                                    alt.Chart(vc)
-                                    .mark_arc(innerRadius=40)
-                                    .encode(
-                                        theta="Count:Q",
-                                        color=alt.Color(
-                                            f"{label}:N",
-                                            scale=alt.Scale(scheme="blues"),
-                                            legend=alt.Legend(orient="bottom", labelFontSize=10),
-                                        ),
-                                        tooltip=[f"{label}:N", "Count:Q"],
+                    # ════════════════════════════════════════════════════════════
+                    # DONUT CHARTS (default view)
+                    # ════════════════════════════════════════════════════════════
+                    if chart_type == "donut":
+                        st.markdown('<div class="section-head">Individual Demographics</div>', unsafe_allow_html=True)
+                        st.caption("Single-select fields shown as donut charts. For transport (select all that apply), one person can count in multiple slices.")
+                        
+                        pairs = [
+                            (demo_specs[i], demo_specs[i + 1] if i + 1 < len(demo_specs) else None)
+                            for i in range(0, len(demo_specs), 2)
+                        ]
+                        for spec_l, spec_r in pairs:
+                            cl, cr = st.columns(2)
+                            for col_w, spec in [(cl, spec_l), (cr, spec_r)]:
+                                if spec is None:
+                                    continue
+                                q, label = spec[0], spec[1]
+                                with col_w:
+                                    vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
+                                    vc.columns = [label, "Count"]
+                                    st.altair_chart(
+                                        alt.Chart(vc)
+                                        .mark_arc(innerRadius=40)
+                                        .encode(
+                                            theta="Count:Q",
+                                            color=alt.Color(
+                                                f"{label}:N",
+                                                scale=alt.Scale(scheme="blues"),
+                                                legend=alt.Legend(orient="bottom", labelFontSize=10),
+                                            ),
+                                            tooltip=[f"{label}:N", "Count:Q"],
+                                        )
+                                        .properties(title=label, height=200),
+                                        use_container_width=True,
                                     )
-                                    .properties(title=label, height=200),
-                                    use_container_width=True,
+                    
+                    # ════════════════════════════════════════════════════════════
+                    # HORIZONTAL BAR CHART
+                    # ════════════════════════════════════════════════════════════
+                    elif chart_type == "bar":
+                        st.markdown('<div class="section-head">Demographics Overview (Horizontal Bar)</div>', unsafe_allow_html=True)
+                        st.caption("Best for multiple choice/select demographics. Easy to compare across categories.")
+                        
+                        for q, label in demo_specs:
+                            vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
+                            vc.columns = [label, "Count"]
+                            vc = vc.sort_values("Count", ascending=True)  # Sort for better readability
+                            
+                            bar_chart = (
+                                alt.Chart(vc)
+                                .mark_bar(color="#1a3263")
+                                .encode(
+                                    y=alt.Y(f"{label}:N", sort="-x", title=None),
+                                    x=alt.X("Count:Q", title="Number of Responses"),
+                                    tooltip=[f"{label}:N", "Count:Q"],
                                 )
-
-                st.markdown(
-                    '<div class="section-head" style="margin-top:1.2rem;">💬 Profile and responses (same person)</div>',
-                    unsafe_allow_html=True,
-                )
-                st.caption(
-                    "Each row is one submission: demographic answers (including custom profile questions) next to that respondent’s open feedback, sentiment label, and SERVQUAL / general rating averages when present."
-                )
-                has_demo_row = df["demo_answers"].apply(
-                    lambda x: isinstance(x, dict) and bool(x)
-                )
-                view = df[has_demo_row].copy()
-                if view.empty:
-                    st.info("No rows with filled profile data in this date range.")
-                else:
-                    dnorm = pd.json_normalize(view["demo_answers"].tolist())
-                    for c in dnorm.columns:
-                        dnorm[c] = dnorm[c].map(_format_demo_cell)
-                    dnorm.columns = [
-                        (f"Profile: {c}" if len(c) <= 56 else f"Profile: {c[:53]}…") for c in dnorm.columns
-                    ]
-                    resp_cols = [c for c in ("created_at", "sentiment_status", "raw_feedback") if c in view.columns]
-                    for c in present_servqual_dims.values():
-                        if c in view.columns:
-                            resp_cols.append(c)
-                    if has_general_ratings and GENERAL_RATINGS_COL in view.columns:
-                        resp_cols.append(GENERAL_RATINGS_COL)
-                    resp_part = view[resp_cols].reset_index(drop=True)
-                    merged_view = pd.concat([resp_part, dnorm.reset_index(drop=True)], axis=1)
-                    table_kw = dict(
-                        data=merged_view,
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(520, 80 + 36 * max(1, len(merged_view))),
-                    )
-                    if "raw_feedback" in merged_view.columns:
-                        table_kw["column_config"] = {
-                            "raw_feedback": st.column_config.TextColumn(
-                                "Open feedback",
-                                width="large",
+                                .properties(
+                                    title=label,
+                                    height=max(200, len(vc) * 30)
+                                )
                             )
-                        }
-                    st.dataframe(**table_kw)
+                            st.altair_chart(bar_chart, use_container_width=True)
+                    
+                    # ════════════════════════════════════════════════════════════
+                    # STACKED BAR CHART
+                    # ════════════════════════════════════════════════════════════
+                    elif chart_type == "stacked":
+                        st.markdown('<div class="section-head">Demographics Comparison (Stacked)</div>', unsafe_allow_html=True)
+                        st.caption("Shows composition and distribution of demographic categories.")
+                        
+                        if len(demo_specs) >= 2:
+                            # Create comparison between first demographic and others
+                            primary_q, primary_label = demo_specs[0]
+                            st.markdown(f"**Comparing other demographics by {primary_label}:**")
+                            
+                            for q, label in demo_specs[1:]:
+                                # Create cross-tabulation
+                                primary_series = _explode_demo_series(demo_df[primary_q])
+                                secondary_series = _explode_demo_series(demo_df[q])
+                                
+                                # Align the series by index
+                                combined_data = []
+                                for idx, prim_val in enumerate(primary_series):
+                                    if idx < len(secondary_series):
+                                        combined_data.append({
+                                            primary_label: str(prim_val),
+                                            label: str(secondary_series.iloc[idx]),
+                                        })
+                                
+                                if combined_data:
+                                    combined_df = pd.DataFrame(combined_data)
+                                    # Group by primary and count secondary
+                                    grouped = combined_df.groupby([primary_label, label]).size().reset_index(name="Count")
+                                    
+                                    stacked_chart = (
+                                        alt.Chart(grouped)
+                                        .mark_bar()
+                                        .encode(
+                                            x=alt.X(f"{primary_label}:N", title=primary_label),
+                                            y=alt.Y("Count:Q", title="Count"),
+                                            color=alt.Color(f"{label}:N", title=label, scale=alt.Scale(scheme="blues")),
+                                            tooltip=[f"{primary_label}:N", label, "Count:Q"],
+                                        )
+                                        .properties(title=f"{label} by {primary_label}", height=250)
+                                    )
+                                    st.altair_chart(stacked_chart, use_container_width=True)
+                        else:
+                            st.info("Stacked bar chart requires at least 2 demographic questions. Add more demographic questions to use this view.")
+                    
+                    # ════════════════════════════════════════════════════════════
+                    # TABLE VIEW
+                    # ════════════════════════════════════════════════════════════
+                    elif chart_type == "table":
+                        st.markdown('<div class="section-head">Demographics Frequency Table</div>', unsafe_allow_html=True)
+                        st.caption("Detailed counts for each demographic option.")
+                        
+                        for q, label in demo_specs:
+                            vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
+                            vc.columns = [label, "Count"]
+                            vc["Percentage"] = (vc["Count"] / vc["Count"].sum() * 100).round(1)
+                            vc = vc.sort_values("Count", ascending=False)
+                            
+                            st.markdown(f"**{label}**")
+                            st.dataframe(
+                                vc.reset_index(drop=True),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                            st.markdown("---")
+
+
+    with tab6:
+        st.markdown("### 👤 Respondent Details")
+        st.caption("View all responses with demographic information. Each row is one respondent.")
+        
+        try:
+            # Fetch all form responses
+            all_responses = (
+                conn.client.table("form_responses")
+                .select("*")
+                .eq("admin_email", admin_email)
+                .eq("form_id", current_form_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            
+            if not all_responses.data:
+                st.info("No responses yet for this form.")
+            else:
+                # Fetch all questions for column headers
+                q_query = (
+                    conn.client.table("form_questions")
+                    .select("id, prompt, q_type, is_demographic")
+                    .eq("admin_email", admin_email)
+                    .eq("form_id", current_form_id)
+                    .order("sort_order")
+                    .execute()
+                )
+                all_questions = q_query.data or []
+                
+                # Fetch form meta to check if demographics are enabled
+                try:
+                    form_meta_query = (
+                        conn.client.table("form_meta")
+                        .select("include_demographics")
+                        .eq("admin_email", admin_email)
+                        .eq("form_id", current_form_id)
+                        .single()
+                        .execute()
+                    )
+                    form_meta_data = form_meta_query.data if form_meta_query else {}
+                except Exception:
+                    form_meta_data = {}
+                
+                # Get include_demographics flag
+                show_demo_block = form_meta_data.get("include_demographics", False) if form_meta_data else False
+                
+                # IMPORTANT: Include STANDARD_DEMO_QUESTIONS which are hardcoded but not in database
+                STANDARD_DEMO_QUESTIONS = [
+                    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {
+                        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
+                        "q_type": "Multiple Select",
+                        "options": ["Jeepney", "Bus", "Train/LRT", "Taxi", "Tricycle", "Van/Shuttle", "Walking", "Bicycle", "Motorcycle", "Car", "Other"],
+                        "is_required": True,
+                        "servqual_dimension": "Commuter Profile",
+                        "is_demographic": True,
+                    },
+                    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                ]
+                
+                # Add standard questions only if "include_demographics" is True for this form
+                if show_demo_block:
+                    # Only add standard questions if they're not already in the database
+                    existing_prompts = {q.get("prompt") for q in all_questions}
+                    for std_q in STANDARD_DEMO_QUESTIONS:
+                        if std_q.get("prompt") not in existing_prompts:
+                            all_questions.append(std_q)
+                
+                # Separate demographic and non-demographic questions
+                demo_questions = [q for q in all_questions if q.get("is_demographic")]
+                non_demo_questions = [q for q in all_questions if not q.get("is_demographic")]
+                
+                # For Respondent Details, we need to handle the fact that answers are keyed by prompt
+                # with counters for duplicates. Build a list of all possible keys
+                possible_answer_keys = []
+                prompt_counts = {}
+                for q in non_demo_questions:
+                    prompt = q.get("prompt", "")
+                    if prompt not in prompt_counts:
+                        prompt_counts[prompt] = 0
+                        possible_answer_keys.append((q, prompt))  # First occurrence uses plain prompt
+                    else:
+                        prompt_counts[prompt] += 1
+                        possible_answer_keys.append((q, f"{prompt} ({prompt_counts[prompt]})"))  # Duplicates get counter
+                
+                # Build table data
+                table_data = []
+                for response in all_responses.data:
+                    row = {
+                        "Respondent ID": str(response.get("id", ""))[:8],
+                        "Submitted": response.get("created_at", "")[:10],
+                        "Time": response.get("created_at", "")[11:19],
+                    }
+                    
+                    # ════════════════════════════════════════════════════════════
+                    # Add DEMOGRAPHIC answers first (from demo_answers JSONB column)
+                    # ════════════════════════════════════════════════════════════
+                    demo_ans_map = response.get("demo_answers", {})
+                    if isinstance(demo_ans_map, dict):
+                        for demo_q in demo_questions:
+                            demo_prompt = demo_q.get("prompt", "Unknown")
+                            demo_answer = demo_ans_map.get(demo_prompt, "")
+                            if demo_answer is None:
+                                demo_answer = ""
+                            elif isinstance(demo_answer, list):
+                                demo_answer = ", ".join(str(a) for a in demo_answer)
+                            else:
+                                demo_answer = str(demo_answer)
+                            
+                            # Mark demographic columns with 👥 prefix for easy identification
+                            row[f"👥 {demo_prompt}"] = demo_answer
+                    
+                    # ════════════════════════════════════════════════════════════
+                    # Add NON-DEMOGRAPHIC answers (from answers dict)
+                    # ════════════════════════════════════════════════════════════
+                    ans_map = response.get("answers", {})
+                    
+                    for q, answer_key in possible_answer_keys:
+                        q_prompt = q.get("prompt", "Unknown")
+                        q_type = q.get("q_type", "")
+                        
+                        # Find answer for this question using the key we constructed
+                        answer = ans_map.get(answer_key, "")
+                        if answer is None:
+                            answer = ""
+                        elif isinstance(answer, list):
+                            answer = ", ".join(str(a) for a in answer)
+                        else:
+                            answer = str(answer)
+                        
+                        # Create unique column name that includes question type if needed
+                        # This prevents duplicate question titles from overwriting each other
+                        if q_type in ("Multiple Choice", "Multiple Select"):
+                            col_name = f"{q_prompt} [{q_type}]"
+                        else:
+                            col_name = q_prompt
+                        
+                        row[col_name] = answer
+                    
+                    table_data.append(row)
+                
+                # Create dataframe
+                df_responses = pd.DataFrame(table_data)
+                
+                # ════════════════════════════════════════════════════════════
+                # SECTION 1: Respondent Details Table with Filters
+                # ════════════════════════════════════════════════════════════
+                st.markdown(f"### Respondent Responses Table ({len(all_responses.data)} total)")
+                
+                # Search/Filter section
+                col1, col2 = st.columns(2)
+                with col1:
+                    search_text = st.text_input(
+                        "🔍 Search responses",
+                        placeholder="Type to search all columns...",
+                        key="respondent_search"
+                    )
+                
+                with col2:
+                    # Filter by date
+                    if "Submitted" in df_responses.columns:
+                        min_date = pd.to_datetime(df_responses["Submitted"]).min().date()
+                        max_date = pd.to_datetime(df_responses["Submitted"]).max().date()
+                        
+                        date_range = st.date_input(
+                            "📅 Filter by date",
+                            value=(min_date, max_date),
+                            key="respondent_date_range"
+                        )
+                        
+                        if isinstance(date_range, tuple) and len(date_range) == 2:
+                            df_filtered = df_responses[
+                                (pd.to_datetime(df_responses["Submitted"]).dt.date >= date_range[0]) &
+                                (pd.to_datetime(df_responses["Submitted"]).dt.date <= date_range[1])
+                            ]
+                        else:
+                            df_filtered = df_responses
+                    else:
+                        df_filtered = df_responses
+                
+                # Apply text search
+                if search_text:
+                    mask = df_filtered.astype(str).apply(
+                        lambda x: x.str.contains(search_text, case=False, na=False).any(),
+                        axis=1
+                    )
+                    df_filtered = df_filtered[mask]
+                
+                # Display table
+                st.markdown(f"**Showing {len(df_filtered)} of {len(df_responses)} responses**")
+                
+                # Reorder columns: ID, Date/Time, Demographics (👥 prefix), then other answers
+                demo_cols = [c for c in df_filtered.columns if c.startswith("👥 ")]
+                other_cols = [c for c in df_filtered.columns if not c.startswith("👥 ") and c not in ("Respondent ID", "Submitted", "Time")]
+                col_order = ["Respondent ID", "Submitted", "Time"] + demo_cols + other_cols
+                col_order = [c for c in col_order if c in df_filtered.columns]  # Keep only existing columns
+                
+                st.dataframe(
+                    df_filtered[col_order],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(600, 80 + 36 * max(1, len(df_filtered))),
+                )
+                
+                # Download option
+                csv = df_filtered[col_order].to_csv(index=False)
+                st.download_button(
+                    label="📥 Download as CSV",
+                    data=csv,
+                    file_name=f"respondents_{current_form_id}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                )
+        
+        except Exception as e:
+            st.error(f"Error loading respondent data: {str(e)}")
+    
+    # ─────────────────────────────────
+    # TAB 7 — MULTIPLE CHOICE CHARTS
+    # ─────────────────────────────────
+    with tab7:
+        st.markdown("### 📊 Multiple Choice & Multiple Select Responses")
+        st.caption("Bar charts showing answer counts for each multiple choice/select question. For multiple select questions, respondents can select more than one answer, so totals may exceed the number of responses.")
+        
+        try:
+            # Get multiple choice/select questions only
+            mc_questions = [q for q in all_questions if q.get("q_type") in ("Multiple Choice", "Multiple Select")]
+            
+            if not mc_questions:
+                st.info("No multiple choice or multiple select questions in this form.")
+            else:
+                # Build unique prompts map (same logic as Respondent Details table)
+                seen_prompts = {}
+                
+                # Display chart for each MC question
+                for q in mc_questions:
+                    q_prompt = q.get("prompt", "Unknown")
+                    q_type = q.get("q_type", "")
+                    
+                    # Create unique key matching how answers are stored
+                    if q_prompt not in seen_prompts:
+                        seen_prompts[q_prompt] = 0
+                        unique_key = q_prompt
+                    else:
+                        seen_prompts[q_prompt] += 1
+                        unique_key = f"{q_prompt} ({seen_prompts[q_prompt]})"
+                    
+                    # Get all answers for this question from all responses using unique key
+                    answers = []
+                    for response in all_responses.data:
+                        ans_map = response.get("answers", {})
+                        ans = ans_map.get(unique_key)
+                        if ans:
+                            if isinstance(ans, list):
+                                # Already a list - add all items
+                                answers.extend([str(a).strip() for a in ans if a])
+                            elif isinstance(ans, str):
+                                # Check if it's a comma-separated string (multiple select stored as string)
+                                if "," in ans:
+                                    # Split by comma for multiple select
+                                    answers.extend([a.strip() for a in ans.split(",") if a.strip()])
+                                else:
+                                    # Single answer
+                                    answers.append(ans.strip())
+                            else:
+                                answers.append(str(ans).strip())
+                    
+                    if answers:
+                        # Count occurrences
+                        answer_counts = pd.Series(answers).value_counts().reset_index()
+                        answer_counts.columns = ["Answer", "Count"]
+                        answer_counts = answer_counts.sort_values("Count", ascending=False)
+                        
+                        # Create bar chart with type indicator
+                        type_label = "Multiple Select" if q_type == "Multiple Select" else "Multiple Choice"
+                        chart = alt.Chart(answer_counts).mark_bar(color="#1a3263").encode(
+                            x=alt.X("Count:Q", title="Number of Responses"),
+                            y=alt.Y("Answer:N", sort="-x", title=""),
+                            tooltip=["Answer:N", "Count:Q"],
+                        ).properties(
+                            title=f"{q_prompt} [{type_label}]",
+                            height=200 + max(0, (len(answer_counts) - 5) * 20)
+                        )
+                        
+                        st.altair_chart(chart, use_container_width=True)
+                    else:
+                        st.info(f"No responses for: {q_prompt} [{q_type}]")
+        
+        except Exception as e:
+            st.error(f"Error loading multiple choice data: {str(e)}")
 
     # ── EXPORT ──
     st.markdown("---")

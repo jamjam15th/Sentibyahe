@@ -148,6 +148,8 @@ if "selected_ids"   not in st.session_state: st.session_state.selected_ids   = s
 if "filter_dim"     not in st.session_state: st.session_state.filter_dim     = "All"
 if "filter_type"    not in st.session_state: st.session_state.filter_type    = "All"
 if "filter_req"     not in st.session_state: st.session_state.filter_req     = "All"
+if "_show_meta_saved" not in st.session_state: st.session_state._show_meta_saved = False
+if "_confirm_delete_all_responses" not in st.session_state: st.session_state._confirm_delete_all_responses = False
 
 # ══════════════════════════════════════════
 # DB HELPERS
@@ -381,7 +383,7 @@ def update_meta():
         ),
     }
     try:
-        conn.client.table("form_meta").upsert(payload, on_conflict="form_id").execute()
+        conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
         st.session_state.pop("form_meta_migration_needed", None)
         st.session_state.pop("form_meta_reach_out_migration_needed", None)
     except Exception as e:
@@ -396,7 +398,7 @@ def update_meta():
             payload.pop("reach_out_contact", None)
             stripped = True
         if stripped:
-            conn.client.table("form_meta").upsert(payload, on_conflict="form_id").execute()
+            conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
         else:
             raise
 
@@ -404,24 +406,38 @@ st.markdown("""
 <div class="premium-header">
     <div>
         <h1>🛠️ Form Builder</h1>
-        <p>Design your surveys and manage question logic.</p>
+        <p>Design your surveys and manage questions — one form at a time.</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════
-# MANDATORY FORM SELECTION
-# ══════════════════════════════════════════
-st.markdown("### 📋 Select a Form to Edit")
+# Show success message if settings were just saved
+if st.session_state.get("_show_meta_saved"):
+    st.success("✅ Survey settings saved successfully!")
+    st.session_state._show_meta_saved = False
 
+# Clear any lingering dialog states to prevent dimming
+# This ensures dialogs don't stay open when they shouldn't be
+if st.session_state.get("_clear_all_dialogs"):
+    st.session_state.pop("_show_create_form", None)
+    st.session_state.pop("_show_manage_forms", None)
+    st.session_state.pop("_confirm_delete_form_id", None)
+    st.session_state.pop("_confirm_del_qid", None)
+    st.session_state.pop("_confirm_del_bulk_ids", None)
+    st.session_state.pop("_show_demo_type_dialog", None)
+    st.session_state.pop("_clear_all_dialogs", None)
+
+# ══════════════════════════════════════════
+# FORM SELECTION SIDEBAR
+# ══════════════════════════════════════════
 available_forms = st.session_state.get("available_forms", [])
 if not available_forms:
-    st.warning("No forms found.")
-    col_create, col_manage = st.columns(2)
-    with col_create:
+    st.warning("🔍 No forms found.")
+    fsb1, fsb2 = st.columns(2)
+    with fsb1:
         if st.button("➕ Create Your First Form", type="primary", use_container_width=True):
             st.session_state._show_create_form = True
-    with col_manage:
+    with fsb2:
         if st.button("⚙️ Manage Forms", use_container_width=True):
             st.session_state._show_manage_forms = True
     
@@ -431,66 +447,33 @@ if not available_forms:
     elif st.session_state.get("_show_manage_forms"):
         dialog_manage_forms()
     
-    st.stop()  # Block access to builder until form is created
+    st.stop()
 
-# Display form selection grid
-form_cols = st.columns(min(3, len(available_forms)))
-selected_form_id = None
+# Form selector dropdown
+sc1, sc2, sc3 = st.columns([2, 0.5, 0.5])
 
-for idx, form in enumerate(available_forms):
-    col_idx = idx % len(form_cols)
-    with form_cols[col_idx]:
-        # Count responses for this form
-        try:
-            resp_count = conn.client.table("form_responses").select("id", count="exact").eq("form_id", form["form_id"]).eq("admin_email", admin_email).execute()
-            response_count = resp_count.count if hasattr(resp_count, "count") else 0
-        except:
-            response_count = 0
-        
-        # Compute colors/styles based on selection
-        is_selected = form["form_id"] == current_form_id
-        border_color = "#ffc570" if is_selected else "#dde3ef"
-        box_shadow = "0 4px 12px rgba(255,197,112,0.2)" if is_selected else "0 2px 4px rgba(0,0,0,0.05)"
-        status_text = "Active" if not form.get("is_archived") else "Archived"
-        
-        # Form card
-        card_html = f"""<div style="background: white; border: 2px solid {border_color}; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: {box_shadow};">
-            <div style="font-weight: 700; color: #1a2e55; font-size: 1.1rem; margin-bottom: 0.5rem;">{form['title']}</div>
-            <div style="color: #7c8db5; font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.4;">{form.get('description', 'No description')}</div>
-            <div style="display: flex; gap: 1rem;">
-                <div style="flex: 1;">
-                    <div style="font-size: 0.65rem; color: #7c8db5; text-transform: uppercase; font-weight: 700;">Responses</div>
-                    <div style="font-size: 1.3rem; font-weight: 700; color: #1a2e55;">{response_count}</div>
-                </div>
-                <div style="flex: 1;">
-                    <div style="font-size: 0.65rem; color: #7c8db5; text-transform: uppercase; font-weight: 700;">Status</div>
-                    <div style="font-size: 0.9rem; color: #4a7c59; font-weight: 600;">{status_text}</div>
-                </div>
-            </div>
-        </div>"""
-        st.markdown(card_html, unsafe_allow_html=True)
-        
-        # Select button
-        if st.button("📝 Edit Form", key=f"select_{form['form_id']}", use_container_width=True):
-            # Clear any open dialogs
-            st.session_state.pop("_show_create_form", None)
-            st.session_state.pop("_show_manage_forms", None)
-            st.session_state.pop("_confirm_delete_form_id", None)
-            st.session_state.pop("_show_demo_type_dialog", None)
-            st.session_state.pop("_confirm_del_qid", None)
-            st.session_state.pop("_confirm_del_bulk_ids", None)
-            
-            set_current_form(form["form_id"])
+with sc1:
+    form_options = [f["title"] for f in available_forms]
+    current_form_idx = next((i for i, f in enumerate(available_forms) if f["form_id"] == current_form_id), 0)
+    selected_form_name = st.selectbox(
+        "📋 Select form to edit",
+        form_options,
+        index=current_form_idx,
+        label_visibility="collapsed"
+    )
+    
+    if selected_form_name:
+        selected_form_obj = next((f for f in available_forms if f["title"] == selected_form_name), None)
+        if selected_form_obj and selected_form_obj["form_id"] != current_form_id:
+            set_current_form(selected_form_obj["form_id"])
             st.rerun()
 
-# Form management buttons
-col_create, col_manage = st.columns(2)
-with col_create:
-    if st.button("➕ Create New Form", use_container_width=True):
+with sc2:
+    if st.button("➕ New", use_container_width=True, help="Create a new form"):
         st.session_state._show_create_form = True
 
-with col_manage:
-    if st.button("⚙️ Manage Forms", use_container_width=True):
+with sc3:
+    if st.button("⚙️ Manage", use_container_width=True, help="Manage all forms"):
         st.session_state._show_manage_forms = True
 
 # Trigger dialogs (only one at a time via if/elif)
@@ -507,547 +490,602 @@ elif st.session_state.get("_confirm_del_qid") is not None:
 elif st.session_state.get("_confirm_del_bulk_ids"):
     dialog_delete_bulk_questions()
 
-st.markdown("<div style='margin:2rem 0; border-bottom:2px solid #e0e0e0'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin:1rem 0; border-bottom:1px solid #dde3ef'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # BUILDER INTERFACE (only show after form selection)
 # ══════════════════════════════════════════
-available_forms = st.session_state.get("available_forms", [])
 form_is_selected = current_form_id and len([f for f in available_forms if f["form_id"] == current_form_id]) > 0
 
 if not form_is_selected:
-    st.info("👆 **Select a form above to begin editing questions and settings.**")
-    st.stop()  # Block access to builder until a form is selected
+    st.info("👆 **Select a form above to begin editing.**")
+    st.stop()
 
-# Get the selected form details
-selected_form = next((f for f in available_forms if f["form_id"] == current_form_id), None)
-if selected_form:
-    form_title = selected_form['title']
-    form_desc = selected_form.get('description', 'No description')
+# ══════════════════════════════════════════
+# TABS: SETTINGS vs QUESTIONS
+# ══════════════════════════════════════════
+tab_settings, tab_questions, tab_info = st.tabs(["⚙️ Settings", "📝 Questions", "ℹ️ SERVQUAL"])
+
+with tab_settings:
+    st.markdown("### Survey Settings")
     
-    info_html = f"""<div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
-        <div style="font-weight: 700; color: #1a2e55;">✓ Currently Editing: {form_title}</div>
-        <div style="font-size: 0.85rem; color: #7c8db5; margin-top: 0.3rem;">{form_desc}</div>
-    </div>"""
-    st.markdown(info_html, unsafe_allow_html=True)
+    if st.session_state.get("form_meta_migration_needed"):
+        st.error(
+            "Database column `allow_multiple_responses` is missing on `form_meta`. "
+            "Run the SQL in `sql/add_allow_multiple_responses_to_form_meta.sql` "
+            "(Supabase → SQL Editor), then refresh this page."
+        )
 
-# ══════════════════════════════════════════
-# FORM SETTINGS & METADATA
-# ══════════════════════════════════════════
-
-if st.session_state.get("form_meta_migration_needed"):
-    st.error(
-        "Database column `allow_multiple_responses` is missing on `form_meta`. "
-        "Run the SQL in `sql/add_allow_multiple_responses_to_form_meta.sql` "
-        "(Supabase → SQL Editor), then refresh this page. "
-        "Other form settings still save; this toggle will work after the migration."
-    )
-
-if st.session_state.get("form_meta_reach_out_migration_needed"):
-    st.error(
-        "Database column `reach_out_contact` is missing on `form_meta`. "
-        "Run the SQL in `sql/add_reach_out_contact_to_form_meta.sql` "
-        "(Supabase → SQL Editor), then refresh this page."
-    )
-
-col_settings, col_share = st.columns([1.14, 0.86], gap="large")
-
-with col_settings:
-    st.markdown("##### Survey copy & behavior")
-    st.caption("Changes apply after **Save survey settings**.")
-    st.text_input("Survey title", key="meta_title")
-    st.text_area("Survey description", key="meta_desc", height=72)
-    st.text_area(
-        "Reach out / contact (thank-you screen)",
-        key="meta_reach_out",
-        placeholder="e.g. Email: research@school.edu · Office: Room 204",
-        height=76,
-        help="Optional. Shown after someone submits.",
-    )
-    st.toggle(
-        "Allow multiple responses from the same user/session",
-        key="meta_allow_multi",
-    )
-    if st.button("💾 Save survey settings", type="primary"):
-        update_meta()
-        st.success("Survey settings saved.")
-    st.checkbox(
-        "Include standard respondent profile (age, gender, occupation, transport, commute frequency)",
-        key="meta_include_demo",
-    )
-    st.caption(
-        "Turn this off if you only use **your own** questions marked as demographic below. "
-        "Either way, click **Save survey settings** after editing."
-    )
-
-with col_share:
-    st.markdown("##### Share & preview")
-    st.markdown(
-        f"""
-        <div class="custom-link-card" style="margin-top:0;">
-          <div class="custom-link-label">🔗 YOUR SURVEY LINK</div>
-          <a class="custom-link-url" href="{shareable_link}" target="_blank">{shareable_link}</a>
-          <div class="custom-link-hint">Copy and send to respondents.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.session_state.preview_mode = st.toggle(
-        "👁 Respondent preview mode",
-        value=st.session_state.preview_mode,
-    )
-    if st.session_state.preview_mode:
+    if st.session_state.get("form_meta_reach_out_migration_needed"):
+        st.error(
+            "Database column `reach_out_contact` is missing on `form_meta`. "
+            "Run the SQL in `sql/add_reach_out_contact_to_form_meta.sql` "
+            "(Supabase → SQL Editor), then refresh this page."
+        )
+    
+    sc1, sc2 = st.columns([1.2, 1])
+    
+    with sc1:
+        st.subheader("📋 Survey Copy")
+        st.text_input("Survey title", key="meta_title", label_visibility="collapsed")
+        st.text_area("Description (optional)", key="meta_desc", height=80, label_visibility="collapsed", placeholder="A few words about what you're asking")
+        st.text_area(
+            "Reach out / Contact",
+            key="meta_reach_out",
+            height=80,
+            label_visibility="collapsed",
+            placeholder="e.g. Email: research@school.edu · Office: Room 204\n\n(shown on thank-you screen)",
+        )
+        
+        st.divider()
+        
+        st.subheader("🎯 Survey Behavior")
+        st.toggle(
+            "**Allow multiple responses** from the same user/session",
+            key="meta_allow_multi",
+            help="Uncheck if you want one response per person."
+        )
+        st.toggle(
+            "**Include standard profile questions** (age, gender, transport mode, etc)",
+            key="meta_include_demo",
+            help="Automatically adds demographics section to your form."
+        )
+        
+        st.divider()
+        
+        if st.button("💾 Save All Settings", type="primary", use_container_width=True):
+            update_meta()
+            st.session_state._show_meta_saved = True
+            st.rerun()
+    
+    with sc2:
+        st.subheader("🔗 Share & Preview")
         st.markdown(
-            '<div style="background:#eef1fa;color:#3b5bdb;padding:10px;border-radius:6px;font-weight:700;text-align:center;margin-top:10px;">'
-            "Preview — this is how respondents see the form</div>",
+            f"""
+            <div class="custom-link-card">
+              <div class="custom-link-label">📤 Shareable Link</div>
+              <a class="custom-link-url" href="{shareable_link}" target="_blank">{shareable_link}</a>
+              <div class="custom-link-hint" style="margin-top:8px;">Copy and send to respondents</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-
-st.markdown('<div style="height:1.1rem"></div>', unsafe_allow_html=True)
-questions = fetch_questions(current_form_id)
-
-# ══════════════════════════════════════════
-# ADD NEW QUESTION
-# ══════════════════════════════════════════
-if not st.session_state.preview_mode:
-    with st.expander("➕ Add Question", expanded=True): 
-
-        c1, c2 = st.columns([3, 2])
-        with c1:
-            new_prompt = st.text_input("Question text", placeholder="e.g. How was the driver's behavior?")
-        with c2:
-            q_type = st.selectbox(
-                "Question type",
-                ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"],
-            )
-
-        new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
-
-        if q_type in ("Multiple Choice", "Multiple Select"):
-            opts_raw = st.text_input("Options (comma-separated)", placeholder="e.g. Mabuti, Okay, Masama")
-            if opts_raw:
-                new_options = [o.strip() for o in opts_raw.split(",") if o.strip()]
-
-        if q_type == "Rating (Likert)":
-            st.markdown("**Likert Scale Settings**")
-            sc1, sc2, sc3 = st.columns([1, 2, 2])
-            with sc1:
-                new_scale_max = st.number_input("Points (max)", min_value=2, max_value=10, value=5, step=1)
-            with sc2:
-                new_scale_label_low = st.text_input("Label for 1 (lowest)", placeholder="e.g. Strongly Disagree")
-            with sc3:
-                new_scale_label_high = st.text_input(f"Label for {int(new_scale_max)} (highest)", placeholder="e.g. Strongly Agree")
-
-        c3, c4 = st.columns(2)
-        with c3:
-            selected_dim = st.selectbox("SERVQUAL dimension", ["None"] + DIM_KEYS)
-            servqual_dim = None if selected_dim == "None" else selected_dim
-        with c4:
-            st.markdown("<div style='margin-top:2rem'></div>", unsafe_allow_html=True)
-            is_required = st.checkbox("Required question", value=True)
-        is_demographic_q = st.checkbox(
-            "Mark as demographic (saved with profile data for the Demographics tab)",
-            value=False,
-            key="add_q_is_demo",
-            help="Only for Multiple Choice or Multiple Select with a fixed list of options (donut charts). Not for free text or Likert.",
-        )
-        if is_demographic_q and not demographic_qtype_ok(q_type):
-            st.warning(
-                "**Demographics** charts need **Multiple Choice** or **Multiple Select** — not free text (e.g. name) or Likert. "
-                "Change the question type above, or turn this off."
-            )
-
-        st.caption(
-            "Saving adds this question to your **live survey link** and to the **dashboard** for **new** responses only. "
-            "If you delete a question later, old rows stay in the database but charts follow **current** questions."
-        )
-        st.markdown("<div style='margin-top:.5rem'></div>", unsafe_allow_html=True)
-        if st.button("💾 Save question to form", use_container_width=True, type="primary"):
-            if new_prompt.strip():
-                if is_demographic_q and not demographic_qtype_ok(q_type):
-                    st.session_state["_show_demo_type_dialog"] = True
-                    st.rerun()
-                elif q_type in ("Multiple Choice", "Multiple Select") and not new_options:
-                    st.warning("Add at least one option for this question type.")
-                elif q_type == "Multiple Select" and len(new_options) < 2:
-                    st.warning("Multiple select works best with two or more options.")
-                else:
-                    max_order = max((q.get("sort_order") or 0 for q in questions), default=0)
-                    payload = {
-                        "admin_email": admin_email,
-                        "form_id": current_form_id,
-                        "public_id": public_id,
-                        "prompt": new_prompt.strip(), "q_type": q_type,
-                        "options": new_options, "is_required": is_required,
-                        "is_demographic": bool(is_demographic_q),
-                        "servqual_dimension": servqual_dim,
-                        "sort_order": max_order + 1,
-                    }
-                    if q_type == "Rating (Likert)":
-                        payload["scale_max"]        = int(new_scale_max)
-                        payload["scale_label_low"]  = new_scale_label_low.strip() or None
-                        payload["scale_label_high"] = new_scale_label_high.strip() or None
-                    conn.client.table("form_questions").insert(payload).execute()
-                    st.success("Question saved to your form.")
-                    st.rerun()
-            else:
-                st.warning("⚠️ Please enter a question first.")
-
-    with st.expander("ℹ️ What is SERVQUAL?"):
-        render_dimension_cards()
-
-# ══════════════════════════════════════════
-# FILTER BAR
-# ══════════════════════════════════════════
-with st.expander("🔍 Filter questions", expanded=False):
-    fa, fb, fc, fd = st.columns(4)
-    with fa:
-        st.session_state.filter_dim = st.selectbox(
-            "By dimension", ["All"] + DIM_KEYS + ["General / Demographic"], key="sel_fdim"
-        )
-    with fb:
-        st.session_state.filter_type = st.selectbox(
-            "By type",
-            ["All", "Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"],
-            key="sel_ftype",
-        )
-    with fc:
-        st.session_state.filter_req = st.selectbox("By required", ["All", "Required", "Optional"], key="sel_freq")
-    with fd:
-        st.session_state.filter_demo = st.selectbox(
-            "By tag",
-            ["All", "Demographic only", "Not demographic"],
-            key="sel_fdemo",
-        )
-
-def passes_filter(q):
-    dim = q.get("servqual_dimension") or "General / Demographic"
-    if st.session_state.filter_dim != "All" and dim != st.session_state.filter_dim:
-        return False
-    qtype = q.get("q_type", "")
-    if st.session_state.filter_type != "All" and qtype != st.session_state.filter_type:
-        return False
-    if st.session_state.filter_req == "Required" and not q.get("is_required"):
-        return False
-    if st.session_state.filter_req == "Optional" and q.get("is_required"):
-        return False
-    fdemo = st.session_state.get("sel_fdemo", "All")
-    if fdemo == "Demographic only" and not q.get("is_demographic"):
-        return False
-    if fdemo == "Not demographic" and q.get("is_demographic"):
-        return False
-    return True
-
-visible_questions = [q for q in questions if passes_filter(q)]
-filtered = len(visible_questions) < len(questions)
-filter_note = f" (filtered: {len(visible_questions)} of {len(questions)})" if filtered else f" · {len(questions)} total"
-
-# ══════════════════════════════════════════
-# QUESTIONS LIST & DISPLAY
-# ══════════════════════════════════════════
-section_head("👁 Respondent preview" if st.session_state.preview_mode else "Your Form", right=filter_note)
-
-if st.session_state.preview_mode:
-    show_demo_block = form_meta.get("include_demographics", False)
-else:
-    show_demo_block = st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))
-st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
-
-LPT_TRANSPORT_MODE_OPTIONS = [
-    "Jeepney",
-    "Modern jeepney / E-jeep",
-    "Ordinary bus",
-    "Air-conditioned bus",
-    "UV Express",
-    "Van pool (UV-style)",
-    "Tricycle",
-    "Motorcycle taxi (habal-habal)",
-    "Train (MRT / LRT / PNR)",
-    "Taxi",
-    "TNVS (Grab, etc.)",
-    "Ferry / boat",
-    "Walking / cycling",
-    "Company or school service",
-    "Private car (as passenger)",
-    "Other",
-]
-
-STANDARD_DEMO_QUESTIONS = [
-    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {
-        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
-        "q_type": "Multiple Select",
-        "options": LPT_TRANSPORT_MODE_OPTIONS,
-        "is_required": True,
-        "servqual_dimension": "Commuter Profile",
-        "is_demographic": True,
-    },
-    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-]
-
-# ── Helper Functions for Arrow Buttons Reordering ──
-def move_question_order(q_list, target_index, direction):
-    if direction == "up" and target_index > 0:
-        swap_idx = target_index - 1
-    elif direction == "down" and target_index < len(q_list) - 1:
-        swap_idx = target_index + 1
-    else:
-        return
-    new_list = [q["id"] for q in q_list]
-    new_list[target_index], new_list[swap_idx] = new_list[swap_idx], new_list[target_index]
-    apply_new_sort_order(new_list)
-    st.rerun()
-
-def get_card_html(idx, q, q_num_label=None, is_locked=False):
-    def q_type_badge(q_type):
-        return {"Short Answer":"✏️ Short Answer","Paragraph":"📝 Paragraph",
-                "Multiple Choice":"☑️ Multiple Choice","Multiple Select":"☑️ Multiple Select",
-                "Rating (Likert)":"⭐ Likert","Rating (1-5)":"⭐ Likert"}.get(q_type, q_type)
-
-    def dim_pill(dim):
-        if not dim: return ""
-        colors = { 
-            "Tangibles": ("#4a7c59","#e8f5ec"), "Reliability": ("#1a5276","#e8f0f7"), 
-            "Responsiveness": ("#6c3483","#f3eaf7"), "Assurance": ("#7d6608","#fdf6d8"), 
-            "Empathy": ("#922b21","#fceaea"), "Commuter Profile": ("#2a7a3b", "#e6f7eb") 
-        }
-        c, bg = colors.get(dim, ("#555","#eee"))
-        return f'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:{bg};color:{c};margin-right:6px;">{dim}</span>'
-
-    def likert_preview(q):
-        scale_max  = int(q.get("scale_max") or 5)
-        label_low  = q.get("scale_label_low")  or ""
-        label_high = q.get("scale_label_high") or ""
-        boxes = ""
-        for i in range(1, scale_max + 1):
-            lbl = label_low if i == 1 and label_low else (label_high if i == scale_max and label_high else "&nbsp;")
-            boxes += f'<div style="display:flex;flex-direction:column;flex:1;min-width:40px;align-items:center;"><div style="width:100%;padding:12px 0;border:1px solid #dde3ef;border-radius:4px;display:flex;justify-content:center;font-size:13px;color:#3b5bdb;font-weight:500;">{i}</div><div style="font-size:11px;color:#7c8db5;margin-top:5px;text-align:center;min-height:15px;font-weight:600;">{lbl}</div></div>'
-        # Added flex-wrap here for mobile responsiveness!
-        return f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;width:100%; max-width:600px;">{boxes}</div>'
-
-    display_num = q_num_label if q_num_label is not None else f"Q{idx + 1}"
-    prompt   = q["prompt"].replace("<", "&lt;").replace(">", "&gt;")
-    badge    = q_type_badge(q["q_type"])
-    req_star = '<span style="color:#d63031;margin-left:2px;font-weight:700;">*</span>' if q.get("is_required") else ""
-    dim_tag  = dim_pill(q.get("servqual_dimension"))
-    demo_tag = (
-        '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:#e8f4fc;color:#1565a8;margin-right:6px;">👤 Demographic</span>'
-        if q.get("is_demographic")
-        else ""
-    )
-
-    locked_badge = '<span style="font-size:11px;font-weight:700;color:#fff;background:#5566a0;padding:2px 6px;border-radius:4px;margin-right:4px;">🔒 Locked</span>' if is_locked else ""
-
-    extra = ""
-    if q["q_type"] in ("Rating (Likert)", "Rating (1-5)"):
-        extra = likert_preview(q)
-    elif q["q_type"] == "Multiple Choice" and q.get("options"):
-        opts_html = ""
-        for opt in q["options"]:
-            safe_opt = opt.replace("<", "&lt;").replace(">", "&gt;")
-            opts_html += f'<div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><div style="width:14px;height:14px;border:2px solid #b0bcd8;border-radius:50%;flex-shrink:0;"></div><span style="font-size:13px;color:#1a2e55;">{safe_opt}</span></div>'
-        extra = f'<div style="margin-top:8px;">{opts_html}</div>'
-    elif q["q_type"] == "Multiple Select" and q.get("options"):
-        opts_html = ""
-        for opt in q["options"][:12]:
-            safe_opt = opt.replace("<", "&lt;").replace(">", "&gt;")
-            opts_html += f'<div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><div style="width:14px;height:14px;border:2px solid #b0bcd8;border-radius:3px;flex-shrink:0;"></div><span style="font-size:13px;color:#1a2e55;">{safe_opt}</span></div>'
-        if len(q["options"]) > 12:
-            opts_html += f'<div style="font-size:12px;color:#7c8db5;margin-top:8px;">+{len(q["options"]) - 12} more options…</div>'
-        extra = f'<div style="margin-top:8px;">{opts_html}</div>'
-    elif q["q_type"] == "Short Answer":
-        extra = '<div style="margin-top:16px;width:60%;border-bottom:1px dashed #b0bcd8;padding-bottom:6px;color:#7c8db5;font-size:13px;">Short answer text</div>'
-    elif q["q_type"] == "Paragraph":
-        extra = '<div style="margin-top:16px;width:100%;border-bottom:1px dashed #b0bcd8;padding-bottom:24px;color:#7c8db5;font-size:13px;">Long answer text</div>'
-
-    border_style = "2px dashed #b0bcd8" if is_locked else "1px solid #dde3ef"
-
-    html_str = f'<div style="background:#fff;border:{border_style};border-radius:8px;padding:14px;margin-bottom:4px;width:100%;box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span>{locked_badge}<span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
-    
-    return html_str
-
-demo_offset = len(STANDARD_DEMO_QUESTIONS) if show_demo_block else 0
-
-# ── PREVIEW MODE ──
-if st.session_state.preview_mode:
-    if show_demo_block:
-        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard respondent profile</p>", unsafe_allow_html=True)
-        for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
-            st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
-            
-    if len(visible_questions) > 0:
-        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
-        for idx, q in enumerate(visible_questions):
-            st.markdown(get_card_html(idx, q, q_num_label=f"Q{idx + 1 + demo_offset}"), unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
-    elif not show_demo_block:
-        st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5;">🔍 No custom questions added yet.</div>', unsafe_allow_html=True)
-
-# ── BUILDER MODE ──
-else:
-    if show_demo_block and not filtered:
-        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard respondent profile (automatically added)</p>", unsafe_allow_html=True)
-        for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
-            st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
-            st.markdown("<div style='margin-bottom:0.8rem;'></div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
-
-    if len(questions) == 0:
-        if not show_demo_block:
-            st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5; background:#fff; border:1px dashed #dde3ef; border-radius:8px;">📋 No custom questions yet — add one above.</div>', unsafe_allow_html=True)
-    elif len(visible_questions) == 0:
-        st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5;">🔍 No custom questions match the current filters.</div>', unsafe_allow_html=True)
-    else:
-        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
         
-        # BULK DELETE TOOLBAR
-        n_selected = len(st.session_state.selected_ids)
-        toolbar_left, toolbar_right = st.columns([6, 2])
-        with toolbar_left:
-            if n_selected:
-                st.markdown(f'<p style="margin:0;font-size:.82rem;color:var(--danger);font-weight:700;padding:6px 0;">☑ {n_selected} question{"s" if n_selected > 1 else ""} selected</p>', unsafe_allow_html=True)
-            else:
-                st.markdown('<p style="margin:0;font-size:.82rem;color:var(--muted);padding:6px 0;">Check boxes to select custom questions for bulk delete.</p>', unsafe_allow_html=True)
-        with toolbar_right:
-            if n_selected:
-                if st.button(f"🗑️ Delete {n_selected} selected", use_container_width=True, type="primary"):
-                    id_list = [qq["id"] for qq in visible_questions if str(qq["id"]) in st.session_state.selected_ids]
-                    st.session_state._confirm_del_bulk_ids = id_list
-
-        if visible_questions:
-            all_visible_ids = {str(q["id"]) for q in visible_questions}
-            all_selected    = all_visible_ids.issubset(st.session_state.selected_ids)
-            sa_col, _ = st.columns([2, 6])
-            with sa_col:
-                if st.button("☑ Select all" if not all_selected else "☐ Deselect all", use_container_width=True):
-                    if not all_selected:
-                        st.session_state.selected_ids |= all_visible_ids
-                    else:
-                        st.session_state.selected_ids -= all_visible_ids
+        st.divider()
+        
+        st.subheader("🗑️ Data Management")
+        if st.button("Delete all responses", type="secondary", use_container_width=True, help="Remove all submissions for this form"):
+            st.session_state._confirm_delete_all_responses = True
+        
+        if st.session_state.get("_confirm_delete_all_responses"):
+            st.warning("⚠️ This will permanently delete **ALL** responses. Cannot be undone.")
+            db1, db2 = st.columns(2)
+            with db1:
+                if st.button("Yes, delete all", type="primary", key="confirm_delete_resp", use_container_width=True):
+                    try:
+                        conn.client.table("form_responses").delete().eq("form_id", current_form_id).eq("admin_email", admin_email).execute()
+                        st.success("✅ All responses deleted.")
+                        st.session_state._confirm_delete_all_responses = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+            with db2:
+                if st.button("Cancel", key="cancel_delete_resp", use_container_width=True):
+                    st.session_state._confirm_delete_all_responses = False
                     st.rerun()
 
-        st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
+with tab_questions:
+    st.markdown("### Manage Questions")
+    
+    # Preview mode toggle
+    prev_col1, prev_col2 = st.columns([3, 1])
+    with prev_col1:
+        st.markdown("")
+    with prev_col2:
+        st.toggle(
+            "👁 Preview",
+            value=st.session_state.preview_mode,
+            key="preview_toggle",
+        )
+        if st.session_state.get("preview_toggle") is not None:
+            st.session_state.preview_mode = st.session_state.get("preview_toggle", False)
+    
+    questions = fetch_questions(current_form_id)
 
-        # ══════════════════════════════════════════
-        # PER-QUESTION ROWS
-        # ══════════════════════════════════════════
-        for idx, q in enumerate(visible_questions):
-            qid_str    = str(q["id"])
-            is_editing = st.session_state.editing_id == qid_str
-            is_checked = qid_str in st.session_state.selected_ids
-            q_num_label = f"Q{idx + 1 + demo_offset}"
+    # ══════════════════════════════════════════
+    # ADD NEW QUESTION
+    # ══════════════════════════════════════════
+    if not st.session_state.preview_mode:
+        with st.expander("➕ Add New Question", expanded=len(questions) == 0):
+            qa1, qa2 = st.columns([2.5, 1.5])
+            with qa1:
+                new_prompt = st.text_input("Question text", placeholder="e.g. How was the driver's behavior?", label_visibility="collapsed")
+            with qa2:
+                selected_dim = st.selectbox("SERVQUAL dimension", ["None"] + DIM_KEYS, label_visibility="collapsed")
+                servqual_dim = None if selected_dim == "None" else selected_dim
 
-            if not is_editing:
-                st.markdown(get_card_html(idx, q, q_num_label=q_num_label), unsafe_allow_html=True)
-                
-                # NATIVE BUTTONS COLUMN LAYOUT
-                chk_col, up_col, down_col, spacer, edit_col, del_col = st.columns([0.5, 0.7, 0.7, 4.1, 1.5, 1.5], vertical_alignment="center")
-
-                with chk_col:
-                    checked = st.checkbox("", value=is_checked, key=f"chk_{qid_str}", label_visibility="collapsed")
-                    if checked and not is_checked:
-                        st.session_state.selected_ids.add(qid_str)
-                        st.rerun()
-                    elif not checked and is_checked:
-                        st.session_state.selected_ids.discard(qid_str)
-                        st.rerun()
-
-                with up_col:
-                    if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0):
-                        move_question_order(visible_questions, idx, "up")
-
-                with down_col:
-                    if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1):
-                        move_question_order(visible_questions, idx, "down")
-
-                with edit_col:
-                    if st.button("✏️ EDIT", key=f"edit_btn_{qid_str}", use_container_width=True):
-                        st.session_state.editing_id = qid_str
-                        st.rerun()
-
-                with del_col:
-                    if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True):
-                        st.session_state._confirm_del_qid = q["id"]
-                        st.session_state._confirm_del_qid_str = qid_str
-
-                st.markdown("<div style='margin-bottom:1.5rem;'></div>", unsafe_allow_html=True)
-
+            # Determine available question types based on SERVQUAL dimension
+            if servqual_dim is not None:
+                # If SERVQUAL dimension is selected, only allow Likert Scale
+                q_type_options = ["Rating (Likert)"]
+                q_type = "Rating (Likert)"
             else:
-                st.markdown(f"**✏️ Editing {q_num_label}**")
-                with st.container():
-                    ec1, ec2 = st.columns([3, 2])
-                    with ec1:
-                        e_prompt = st.text_input("Edit question", value=q["prompt"], key=f"ep_{qid_str}")
-                    with ec2:
-                        type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
-                        cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
-                        e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
-                        e_dim_choices = ["None"] + DIM_KEYS
-                        e_dim = st.selectbox("Dimension", e_dim_choices, index=e_dim_choices.index(q["servqual_dimension"]) if q.get("servqual_dimension") in e_dim_choices else 0, key=f"ed_{qid_str}")
+                # If no SERVQUAL dimension, allow all question types
+                q_type_options = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
+                q_type = st.selectbox(
+                    "Question type",
+                    q_type_options,
+                    label_visibility="collapsed",
+                )
 
-                    e_req = st.checkbox("Required", value=bool(q.get("is_required")), key=f"er_{qid_str}")
-                    e_demo = st.checkbox(
-                        "Mark as demographic",
-                        value=bool(q.get("is_demographic")),
-                        key=f"edemo_{qid_str}",
-                        help="Only Multiple Choice or Multiple Select (fixed options for donut charts). Not for free text or Likert.",
-                    )
-                    if e_demo and not demographic_qtype_ok(e_type):
-                        st.warning(
-                            "**Demographics** charts need **Multiple Choice** or **Multiple Select**. "
-                            "Change the type above, or turn this off."
-                        )
-                    e_opts_raw = ""
-                    if e_type in ("Multiple Choice", "Multiple Select"):
-                        e_opts_raw = st.text_input("Options (comma-separated)", value=", ".join(q.get("options") or []), key=f"eo_{qid_str}")
+            new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
 
-                    e_scale_max        = q.get("scale_max") or 5
-                    e_scale_label_low  = q.get("scale_label_low")  or ""
-                    e_scale_label_high = q.get("scale_label_high") or ""
+            if q_type in ("Multiple Choice", "Multiple Select"):
+                opts_raw = st.text_input("Options (comma-separated)", placeholder="e.g. Mabuti, Okay, Masama", label_visibility="collapsed")
+                if opts_raw:
+                    new_options = [o.strip() for o in opts_raw.split(",") if o.strip()]
 
-                    if e_type == "Rating (Likert)":
-                        st.markdown("**Likert Scale Settings**")
-                        ls1, ls2, ls3 = st.columns([1, 2, 2])
-                        with ls1:
-                            e_scale_max = st.number_input("Points (max)", min_value=2, max_value=10, value=int(e_scale_max), step=1, key=f"esmax_{qid_str}")
-                        with ls2:
-                            e_scale_label_low = st.text_input("Label for 1 (lowest)", value=e_scale_label_low, placeholder="e.g. Strongly Disagree", key=f"eslow_{qid_str}")
-                        with ls3:
-                            e_scale_label_high = st.text_input(f"Label for {int(e_scale_max)} (highest)", value=e_scale_label_high, placeholder="e.g. Strongly Agree", key=f"eshigh_{qid_str}")
+            if q_type == "Rating (Likert)":
+                st.markdown("**Scale Settings**")
+                sc1, sc2, sc3 = st.columns([1, 2, 2])
+                with sc1:
+                    new_scale_max = st.number_input("Points", min_value=2, max_value=10, value=5, step=1, label_visibility="collapsed")
+                with sc2:
+                    new_scale_label_low = st.text_input("Low label", placeholder="Strongly Disagree", label_visibility="collapsed")
+                with sc3:
+                    new_scale_label_high = st.text_input(f"High label", placeholder="Strongly Agree", label_visibility="collapsed")
 
-                    sv_col, cn_col = st.columns(2)
-                    with sv_col:
-                        if st.button("💾 Save changes", key=f"save_{qid_str}"):
-                            if e_demo and not demographic_qtype_ok(e_type):
-                                st.session_state["_show_demo_type_dialog"] = True
-                                st.rerun()
-                            else:
-                                update_payload = {
-                                    "prompt":             e_prompt.strip(),
-                                    "q_type":             e_type,
-                                    "options":            [o.strip() for o in e_opts_raw.split(",") if o.strip()] if e_opts_raw else [],
-                                    "is_required":        e_req,
-                                    "is_demographic":     bool(e_demo),
-                                    "servqual_dimension": None if e_dim == "None" else e_dim,
-                                }
-                                if e_type == "Rating (Likert)":
-                                    update_payload["scale_max"]        = int(e_scale_max)
-                                    update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
-                                    update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
-                                else:
-                                    update_payload["scale_max"]        = None
-                                    update_payload["scale_label_low"]  = None
-                                    update_payload["scale_label_high"] = None
-                                update_question(q["id"], update_payload)
-                                st.session_state.editing_id = None
-                                st.rerun()
-                    with cn_col:
-                        if st.button("✕ Cancel", key=f"cancel_{qid_str}"):
-                            st.session_state.editing_id = None
+            # Inline checkboxes
+            opt1, opt2, opt3 = st.columns(3)
+            with opt1:
+                is_required = st.checkbox("Required", value=True)
+            with opt2:
+                is_demographic_q = st.checkbox("Demographic", value=False, help="Fixed options for profiles")
+            with opt3:
+                enable_sentiment = True
+                if q_type in ("Short Answer", "Paragraph"):
+                    enable_sentiment = st.checkbox("Analyze sentiment", value=True)
+
+            if is_demographic_q and not demographic_qtype_ok(q_type):
+                st.warning("Demographics need **Multiple Choice** or **Multiple Select** — not free text or Likert.")
+
+            if st.button("💾 Save Question", use_container_width=True, type="primary"):
+                if new_prompt.strip():
+                    if is_demographic_q and not demographic_qtype_ok(q_type):
+                        st.session_state["_show_demo_type_dialog"] = True
+                        st.rerun()
+                    elif q_type in ("Multiple Choice", "Multiple Select") and not new_options:
+                        st.warning("Add at least one option for this question type.")
+                    elif q_type == "Multiple Select" and len(new_options) < 2:
+                        st.warning("Multiple select works best with 2+ options.")
+                    else:
+                        max_order = max((q.get("sort_order") or 0 for q in questions), default=0)
+                        payload = {
+                            "admin_email": admin_email,
+                            "form_id": current_form_id,
+                            "public_id": public_id,
+                            "prompt": new_prompt.strip(), "q_type": q_type,
+                            "options": new_options, "is_required": is_required,
+                            "is_demographic": bool(is_demographic_q),
+                            "servqual_dimension": servqual_dim,
+                            "enable_sentiment": bool(enable_sentiment),
+                            "sort_order": max_order + 1,
+                        }
+                        if q_type == "Rating (Likert)":
+                            payload["scale_max"]        = int(new_scale_max)
+                            payload["scale_label_low"]  = new_scale_label_low.strip() or None
+                            payload["scale_label_high"] = new_scale_label_high.strip() or None
+                        conn.client.table("form_questions").insert(payload).execute()
+                        st.success("✅ Question added!")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Enter question text first.")
+
+    # ══════════════════════════════════════════
+    # FILTER & DISPLAY
+    # ══════════════════════════════════════════
+    st.markdown("---")
+    
+    # Compact filter bar
+    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])
+    with fcol1:
+        st.selectbox("Dimension", ["All"] + DIM_KEYS + ["General / Demographic"], key="sel_fdim", label_visibility="collapsed")
+        st.session_state.filter_dim = st.session_state.sel_fdim
+    with fcol2:
+        st.selectbox("Type", ["All", "Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"], key="sel_ftype", label_visibility="collapsed")
+        st.session_state.filter_type = st.session_state.sel_ftype
+    with fcol3:
+        st.selectbox("Required", ["All", "Required", "Optional"], key="sel_freq", label_visibility="collapsed")
+        st.session_state.filter_req = st.session_state.sel_freq
+    with fcol4:
+        st.selectbox("Tag", ["All", "Demographic only", "Not demographic"], key="sel_fdemo", label_visibility="collapsed")
+    with fcol5:
+        st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+
+    def passes_filter(q):
+        dim = q.get("servqual_dimension") or "General / Demographic"
+        if st.session_state.filter_dim != "All" and dim != st.session_state.filter_dim:
+            return False
+        qtype = q.get("q_type", "")
+        if st.session_state.filter_type != "All" and qtype != st.session_state.filter_type:
+            return False
+        if st.session_state.filter_req == "Required" and not q.get("is_required"):
+            return False
+        if st.session_state.filter_req == "Optional" and q.get("is_required"):
+            return False
+        fdemo = st.session_state.get("sel_fdemo", "All")
+        if fdemo == "Demographic only" and not q.get("is_demographic"):
+            return False
+        if fdemo == "Not demographic" and q.get("is_demographic"):
+            return False
+        return True
+
+    visible_questions = [q for q in questions if passes_filter(q)]
+    filtered = len(visible_questions) < len(questions)
+    filter_note = f"(filtered: {len(visible_questions)}/{len(questions)})" if filtered else f"({len(questions)} total)"
+
+    # ══════════════════════════════════════════
+    # QUESTIONS LIST
+    # ══════════════════════════════════════════
+    if st.session_state.preview_mode:
+        header_text = "📋 Respondent Preview"
+    else:
+        header_text = f"📋 Your Questions {filter_note}"
+
+    st.markdown(f"### {header_text}")
+
+    if st.session_state.preview_mode:
+        show_demo_block = form_meta.get("include_demographics", False)
+    else:
+        show_demo_block = st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))
+
+    st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
+
+    LPT_TRANSPORT_MODE_OPTIONS = [
+        "Jeepney",
+        "Modern jeepney / E-jeep",
+        "Ordinary bus",
+        "Air-conditioned bus",
+        "UV Express",
+        "Van pool (UV-style)",
+        "Tricycle",
+        "Motorcycle taxi (habal-habal)",
+        "Train (MRT / LRT / PNR)",
+        "Taxi",
+        "TNVS (Grab, etc.)",
+        "Ferry / boat",
+        "Walking / cycling",
+        "Company or school service",
+        "Private car (as passenger)",
+        "Other",
+    ]
+
+    STANDARD_DEMO_QUESTIONS = [
+        {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+        {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+        {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+        {
+            "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
+            "q_type": "Multiple Select",
+            "options": LPT_TRANSPORT_MODE_OPTIONS,
+            "is_required": True,
+            "servqual_dimension": "Commuter Profile",
+            "is_demographic": True,
+        },
+        {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    ]
+
+    # ── Helper Functions for Arrow Buttons Reordering ──
+    def move_question_order(q_list, target_index, direction):
+        if direction == "up" and target_index > 0:
+            swap_idx = target_index - 1
+        elif direction == "down" and target_index < len(q_list) - 1:
+            swap_idx = target_index + 1
+        else:
+            return
+        new_list = [q["id"] for q in q_list]
+        new_list[target_index], new_list[swap_idx] = new_list[swap_idx], new_list[target_index]
+        apply_new_sort_order(new_list)
+        st.rerun()
+
+    def get_card_html(idx, q, q_num_label=None, is_locked=False):
+        """Render a single question card."""
+        def q_type_badge(q_type):
+            return {"Short Answer":"✏️ Short Answer","Paragraph":"📝 Paragraph",
+                    "Multiple Choice":"☑️ Multiple Choice","Multiple Select":"☑️ Multiple Select",
+                    "Rating (Likert)":"⭐ Likert","Rating (1-5)":"⭐ Likert"}.get(q_type, q_type)
+
+        def dim_pill(dim):
+            if not dim: return ""
+            colors = { 
+                "Tangibles": ("#4a7c59","#e8f5ec"), "Reliability": ("#1a5276","#e8f0f7"), 
+                "Responsiveness": ("#6c3483","#f3eaf7"), "Assurance": ("#7d6608","#fdf6d8"), 
+                "Empathy": ("#922b21","#fceaea"), "Commuter Profile": ("#2a7a3b", "#e6f7eb") 
+            }
+            c, bg = colors.get(dim, ("#555","#eee"))
+            return f'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:{bg};color:{c};margin-right:6px;">{dim}</span>'
+
+        def likert_preview(q):
+            scale_max  = int(q.get("scale_max") or 5)
+            label_low  = q.get("scale_label_low")  or ""
+            label_high = q.get("scale_label_high") or ""
+            boxes = ""
+            for i in range(1, scale_max + 1):
+                lbl = label_low if i == 1 and label_low else (label_high if i == scale_max and label_high else "&nbsp;")
+                boxes += f'<div style="display:flex;flex-direction:column;flex:1;min-width:40px;align-items:center;"><div style="width:100%;padding:12px 0;border:1px solid #dde3ef;border-radius:4px;display:flex;justify-content:center;font-size:13px;color:#3b5bdb;font-weight:500;">{i}</div><div style="font-size:11px;color:#7c8db5;margin-top:5px;text-align:center;min-height:15px;font-weight:600;">{lbl}</div></div>'
+            # Added flex-wrap here for mobile responsiveness!
+            return f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;width:100%; max-width:600px;">{boxes}</div>'
+
+        display_num = q_num_label if q_num_label is not None else f"Q{idx + 1}"
+        prompt   = q["prompt"].replace("<", "&lt;").replace(">", "&gt;")
+        badge    = q_type_badge(q["q_type"])
+        req_star = '<span style="color:#d63031;margin-left:2px;font-weight:700;">*</span>' if q.get("is_required") else ""
+        dim_tag  = dim_pill(q.get("servqual_dimension"))
+        demo_tag = (
+            '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:#e8f4fc;color:#1565a8;margin-right:6px;">👤 Demographic</span>'
+            if q.get("is_demographic")
+            else ""
+        )
+
+        locked_badge = '<span style="font-size:11px;font-weight:700;color:#fff;background:#5566a0;padding:2px 6px;border-radius:4px;margin-right:4px;">🔒 Locked</span>' if is_locked else ""
+
+        extra = ""
+        if q["q_type"] in ("Rating (Likert)", "Rating (1-5)"):
+            extra = likert_preview(q)
+        elif q["q_type"] == "Multiple Choice" and q.get("options"):
+            opts_html = ""
+            for opt in q["options"]:
+                safe_opt = opt.replace("<", "&lt;").replace(">", "&gt;")
+                opts_html += f'<div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><div style="width:14px;height:14px;border:2px solid #b0bcd8;border-radius:50%;flex-shrink:0;"></div><span style="font-size:13px;color:#1a2e55;">{safe_opt}</span></div>'
+            extra = f'<div style="margin-top:8px;">{opts_html}</div>'
+        elif q["q_type"] == "Multiple Select" and q.get("options"):
+            opts_html = ""
+            for opt in q["options"][:12]:
+                safe_opt = opt.replace("<", "&lt;").replace(">", "&gt;")
+                opts_html += f'<div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><div style="width:14px;height:14px;border:2px solid #b0bcd8;border-radius:3px;flex-shrink:0;"></div><span style="font-size:13px;color:#1a2e55;">{safe_opt}</span></div>'
+            if len(q["options"]) > 12:
+                opts_html += f'<div style="font-size:12px;color:#7c8db5;margin-top:8px;">+{len(q["options"]) - 12} more options…</div>'
+            extra = f'<div style="margin-top:8px;">{opts_html}</div>'
+        elif q["q_type"] == "Short Answer":
+            extra = '<div style="margin-top:16px;width:60%;border-bottom:1px dashed #b0bcd8;padding-bottom:6px;color:#7c8db5;font-size:13px;">Short answer text</div>'
+        elif q["q_type"] == "Paragraph":
+            extra = '<div style="margin-top:16px;width:100%;border-bottom:1px dashed #b0bcd8;padding-bottom:24px;color:#7c8db5;font-size:13px;">Long answer text</div>'
+
+        border_style = "2px dashed #b0bcd8" if is_locked else "1px solid #dde3ef"
+
+        html_str = f'<div style="background:#fff;border:{border_style};border-radius:8px;padding:14px;margin-bottom:4px;width:100%;box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span>{locked_badge}<span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
+        
+        return html_str
+
+    # ══════════════════════════════════════════
+    # DISPLAY QUESTIONS (PREVIEW & BUILDER MODES)
+    # ══════════════════════════════════════════
+    demo_offset = len(STANDARD_DEMO_QUESTIONS) if show_demo_block else 0
+
+    # ── PREVIEW MODE ──
+    if st.session_state.preview_mode:
+        if show_demo_block:
+            st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard respondent profile</p>", unsafe_allow_html=True)
+            for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
+                st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+                
+        if len(visible_questions) > 0:
+            st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
+            for idx, q in enumerate(visible_questions):
+                st.markdown(get_card_html(idx, q, q_num_label=f"Q{idx + 1 + demo_offset}"), unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+        elif not show_demo_block:
+            st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5;">🔍 No custom questions added yet.</div>', unsafe_allow_html=True)
+
+    # ── BUILDER MODE ──
+    else:
+        if show_demo_block and not filtered:
+            st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard respondent profile (automatically added)</p>", unsafe_allow_html=True)
+            for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
+                st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom:0.8rem;'></div>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+
+        if len(questions) == 0:
+            if not show_demo_block:
+                st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5; background:#fff; border:1px dashed #dde3ef; border-radius:8px;">📋 No custom questions yet — add one above.</div>', unsafe_allow_html=True)
+        elif len(visible_questions) == 0:
+            st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5;">🔍 No custom questions match the current filters.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
+            
+            # BULK DELETE TOOLBAR
+            n_selected = len(st.session_state.selected_ids)
+            toolbar_left, toolbar_right = st.columns([6, 2])
+            with toolbar_left:
+                if n_selected:
+                    st.markdown(f'<p style="margin:0;font-size:.82rem;color:var(--danger);font-weight:700;padding:6px 0;">☑ {n_selected} question{"s" if n_selected > 1 else ""} selected</p>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<p style="margin:0;font-size:.82rem;color:var(--muted);padding:6px 0;">Check boxes to select custom questions for bulk delete.</p>', unsafe_allow_html=True)
+            with toolbar_right:
+                if n_selected:
+                    if st.button(f"🗑️ Delete {n_selected} selected", use_container_width=True, type="primary"):
+                        id_list = [qq["id"] for qq in visible_questions if str(qq["id"]) in st.session_state.selected_ids]
+                        st.session_state._confirm_del_bulk_ids = id_list
+
+            if visible_questions:
+                all_visible_ids = {str(q["id"]) for q in visible_questions}
+                all_selected    = all_visible_ids.issubset(st.session_state.selected_ids)
+                sa_col, _ = st.columns([2, 6])
+                with sa_col:
+                    if st.button("☑ Select all" if not all_selected else "☐ Deselect all", use_container_width=True):
+                        if not all_selected:
+                            st.session_state.selected_ids |= all_visible_ids
+                        else:
+                            st.session_state.selected_ids -= all_visible_ids
+                        st.rerun()
+
+            st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
+
+            # ══════════════════════════════════════════
+            # PER-QUESTION ROWS
+            # ══════════════════════════════════════════
+            for idx, q in enumerate(visible_questions):
+                qid_str    = str(q["id"])
+                is_editing = st.session_state.editing_id == qid_str
+                is_checked = qid_str in st.session_state.selected_ids
+                q_num_label = f"Q{idx + 1 + demo_offset}"
+
+                if not is_editing:
+                    st.markdown(get_card_html(idx, q, q_num_label=q_num_label), unsafe_allow_html=True)
+                    
+                    # NATIVE BUTTONS COLUMN LAYOUT
+                    chk_col, up_col, down_col, spacer, edit_col, del_col = st.columns([0.5, 0.7, 0.7, 4.1, 1.5, 1.5], vertical_alignment="center")
+
+                    with chk_col:
+                        checked = st.checkbox("", value=is_checked, key=f"chk_{qid_str}", label_visibility="collapsed")
+                        if checked and not is_checked:
+                            st.session_state.selected_ids.add(qid_str)
+                            st.rerun()
+                        elif not checked and is_checked:
+                            st.session_state.selected_ids.discard(qid_str)
                             st.rerun()
 
-            st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+                    with up_col:
+                        if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0):
+                            move_question_order(visible_questions, idx, "up")
+
+                    with down_col:
+                        if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1):
+                            move_question_order(visible_questions, idx, "down")
+
+                    with edit_col:
+                        if st.button("✏️ EDIT", key=f"edit_btn_{qid_str}", use_container_width=True):
+                            st.session_state.editing_id = qid_str
+                            st.rerun()
+
+                    with del_col:
+                        if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True):
+                            st.session_state._confirm_del_qid = q["id"]
+                            st.session_state._confirm_del_qid_str = qid_str
+
+                    st.markdown("<div style='margin-bottom:1.5rem;'></div>", unsafe_allow_html=True)
+
+                else:
+                    st.markdown(f"**✏️ Editing {q_num_label}**")
+                    with st.container():
+                        ec1, ec2 = st.columns([3, 2])
+                        with ec1:
+                            e_prompt = st.text_input("Edit question", value=q["prompt"], key=f"ep_{qid_str}")
+                        with ec2:
+                            e_dim_choices = ["None"] + DIM_KEYS
+                            e_dim = st.selectbox("Dimension", e_dim_choices, index=e_dim_choices.index(q["servqual_dimension"]) if q.get("servqual_dimension") in e_dim_choices else 0, key=f"ed_{qid_str}")
+                        
+                        # Determine available question types based on SERVQUAL dimension
+                        if e_dim != "None":
+                            # If SERVQUAL dimension is selected, only allow Likert Scale
+                            type_opts = ["Rating (Likert)"]
+                            e_type = "Rating (Likert)"
+                        else:
+                            # If no SERVQUAL dimension, allow all question types
+                            type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
+                            cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
+                            e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
+
+                        e_req = st.checkbox("Required", value=bool(q.get("is_required")), key=f"er_{qid_str}")
+                        e_demo = st.checkbox(
+                            "Mark as demographic",
+                            value=bool(q.get("is_demographic")),
+                            key=f"edemo_{qid_str}",
+                            help="Only Multiple Choice or Multiple Select (fixed options for donut charts). Not for free text or Likert.",
+                        )
+                        if e_demo and not demographic_qtype_ok(e_type):
+                            st.warning(
+                                "**Demographics** charts need **Multiple Choice** or **Multiple Select**. "
+                                "Change the type above, or turn this off."
+                            )
+                        
+                        # Sentiment analysis toggle for text questions
+                        e_enable_sentiment = bool(q.get("enable_sentiment", True))
+                        if e_type in ("Short Answer", "Paragraph"):
+                            e_enable_sentiment = st.checkbox(
+                                "Enable sentiment analysis for this question",
+                                value=e_enable_sentiment,
+                                key=f"es_{qid_str}",
+                                help="If unchecked, this question will not be analyzed for sentiment.",
+                            )
+                        e_opts_raw = ""
+                        if e_type in ("Multiple Choice", "Multiple Select"):
+                            e_opts_raw = st.text_input("Options (comma-separated)", value=", ".join(q.get("options") or []), key=f"eo_{qid_str}")
+
+                        e_scale_max        = q.get("scale_max") or 5
+                        e_scale_label_low  = q.get("scale_label_low")  or ""
+                        e_scale_label_high = q.get("scale_label_high") or ""
+
+                        if e_type == "Rating (Likert)":
+                            st.markdown("**Likert Scale Settings**")
+                            ls1, ls2, ls3 = st.columns([1, 2, 2])
+                            with ls1:
+                                e_scale_max = st.number_input("Points (max)", min_value=2, max_value=10, value=int(e_scale_max), step=1, key=f"esmax_{qid_str}")
+                            with ls2:
+                                e_scale_label_low = st.text_input("Label for 1 (lowest)", value=e_scale_label_low, placeholder="e.g. Strongly Disagree", key=f"eslow_{qid_str}")
+                            with ls3:
+                                e_scale_label_high = st.text_input(f"Label for {int(e_scale_max)} (highest)", value=e_scale_label_high, placeholder="e.g. Strongly Agree", key=f"eshigh_{qid_str}")
+
+                        sv_col, cn_col = st.columns(2)
+                        with sv_col:
+                            if st.button("💾 Save changes", key=f"save_{qid_str}"):
+                                if e_demo and not demographic_qtype_ok(e_type):
+                                    st.session_state["_show_demo_type_dialog"] = True
+                                    st.rerun()
+                                else:
+                                    update_payload = {
+                                        "prompt":             e_prompt.strip(),
+                                        "q_type":             e_type,
+                                        "options":            [o.strip() for o in e_opts_raw.split(",") if o.strip()] if e_opts_raw else [],
+                                        "is_required":        e_req,
+                                        "is_demographic":     bool(e_demo),
+                                        "enable_sentiment":   bool(e_enable_sentiment),
+                                        "servqual_dimension": None if e_dim == "None" else e_dim,
+                                    }
+                                    if e_type == "Rating (Likert)":
+                                        update_payload["scale_max"]        = int(e_scale_max)
+                                        update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
+                                        update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
+                                    else:
+                                        update_payload["scale_max"]        = None
+                                        update_payload["scale_label_low"]  = None
+                                        update_payload["scale_label_high"] = None
+                                    update_question(q["id"], update_payload)
+                                    st.session_state.editing_id = None
+                                    st.rerun()
+                        with cn_col:
+                            if st.button("✕ Cancel", key=f"cancel_{qid_str}"):
+                                st.session_state.editing_id = None
+                                st.rerun()
+
+                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
+with tab_info:
+    st.markdown("### SERVQUAL Framework")
+    st.markdown("""
+The **SERVQUAL** model measures service quality across five key dimensions:
+""")
+    render_dimension_cards()

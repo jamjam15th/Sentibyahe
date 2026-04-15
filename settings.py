@@ -176,7 +176,7 @@ with tab1:
 # ── TAB 2: DATA MANAGEMENT ──
 with tab2:
     st.markdown("### Export Dataset")
-    st.write("Download response data for your Chapters 4 & 5 analysis.")
+    st.write("Download response data.")
     
     try:
         res = conn.client.table("form_responses").select("*").eq("admin_email", admin_email).execute()

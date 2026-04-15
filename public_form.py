@@ -1,6 +1,5 @@
 import hashlib
 import html
-import time
 import uuid
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
@@ -336,10 +335,7 @@ if form_ready_key not in st.session_state:
     st.session_state[form_ready_key] = False
 
 if not st.session_state[form_ready_key]:
-    with st.spinner("Loading full survey form..."):
-        # Keep loader visible long enough so users can perceive it.
-        time.sleep(0.8)
-        st.session_state[form_ready_key] = True
+    st.session_state[form_ready_key] = True
     st.rerun()
 
 # ── 3. HEADER ──
@@ -503,6 +499,9 @@ elif len(form_schema) > 0:
                 else:
                     demo_answers = {}
                     raw_feedback_list = []
+                    question_ids_list = []
+                    sentiment_flags_list = []
+                    question_sentiments = {}  # Store per-question sentiment analysis
                     dim_scores = { "Tangibles": [], "Reliability": [], "Responsiveness": [], "Assurance": [], "Empathy": [] }
                     general_ratings = []
                     
@@ -515,8 +514,10 @@ elif len(form_schema) > 0:
                             continue
 
                         q_info = question_map[uprompt]
+                        q_id = q_info.get("id", uprompt)
                         dim = q_info.get("servqual_dimension")
                         q_type = q_info.get("q_type")
+                        enable_sentiment = q_info.get("enable_sentiment", True)
 
                         if dim == "Commuter Profile" or q_info.get("is_demographic"):
                             demo_answers[q_info["prompt"]] = ans
@@ -526,7 +527,24 @@ elif len(form_schema) > 0:
                             else:
                                 general_ratings.append(int(ans))
                         elif q_type in ("Short Answer", "Paragraph"):
-                            raw_feedback_list.append(str(ans))
+                            # Only include if marked for sentiment analysis
+                            if enable_sentiment:
+                                question_ids_list.append(q_id)
+                                sentiment_flags_list.append(True)
+                                raw_feedback_list.append(str(ans))
+                                # Store per-question data for individual analysis
+                                question_sentiments[q_id] = {
+                                    "text": str(ans),
+                                    "enable_sentiment": True,
+                                    "sentiment": "pending"  # Will be filled by sentiment analysis
+                                }
+                            else:
+                                # Still store it but marked as not for analysis
+                                question_sentiments[q_id] = {
+                                    "text": str(ans),
+                                    "enable_sentiment": False,
+                                    "sentiment": None
+                                }
 
                     payload = {
                         "public_id": target_form_id,
@@ -535,6 +553,9 @@ elif len(form_schema) > 0:
                         **({"client_submission_id": client_cid} if client_cid else {}),
                         "answers": user_answers,
                         "demo_answers": demo_answers,
+                        "question_ids": question_ids_list,  # Only sentiment-enabled questions
+                        "enable_sentiment_flags": sentiment_flags_list,
+                        "question_sentiments": question_sentiments,  # Per-question analysis data
                         "raw_feedback": " | ".join(raw_feedback_list) if raw_feedback_list else None,
                         "sentiment_status": "pending",
                         "tangibles_avg": sum(dim_scores["Tangibles"])/len(dim_scores["Tangibles"]) if dim_scores["Tangibles"] else None,
