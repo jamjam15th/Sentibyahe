@@ -5,6 +5,19 @@ from st_supabase_connection import SupabaseConnection
 
 from servqual_utils import DIM_KEYS
 from components import inject_css, section_head, render_dimension_cards
+from forms import (
+    init_form_session_state,
+    get_current_form_id,
+    set_current_form,
+    fetch_active_forms,
+    create_form,
+    update_form,
+    archive_form,
+    delete_form_permanently,
+    get_form,
+    refresh_form_list,
+    ensure_form_exists,
+)
 
 # Demographics dashboard uses donut-style charts: answers must come from a fixed option list.
 ALLOWED_DEMOGRAPHIC_QTYPES = frozenset({"Multiple Choice", "Multiple Select"})
@@ -108,7 +121,16 @@ st.markdown("""
 # ══════════════════════════════════════════
 conn        = st.connection("supabase", type=SupabaseConnection)
 admin_email = st.session_state.user_email
-public_id   = hashlib.md5(admin_email.encode()).hexdigest()[:12]
+
+# Initialize multi-form session state
+init_form_session_state(admin_email)
+current_form_id = get_current_form_id()  # Get from session state, not ensure_form_exists
+if not current_form_id:
+    current_form_id = ensure_form_exists(admin_email)
+    if current_form_id:
+        st.session_state.current_form_id = current_form_id
+
+public_id   = current_form_id  # Use form_id as the public_id
 
 try:
     host     = st.context.headers.get("Host")
@@ -130,10 +152,12 @@ if "filter_req"     not in st.session_state: st.session_state.filter_req     = "
 # ══════════════════════════════════════════
 # DB HELPERS
 # ══════════════════════════════════════════
-def fetch_questions():
+def fetch_questions(form_id: str = None):
+    if form_id is None:
+        form_id = current_form_id
     try:
         res = (conn.client.table("form_questions")
-               .select("*").eq("admin_email", admin_email)
+               .select("*").eq("admin_email", admin_email).eq("form_id", form_id)
                .order("sort_order").execute())
         return res.data or []
     except Exception:
@@ -224,11 +248,96 @@ in your survey (e.g. open feedback or SERVQUAL ratings).
         st.rerun()
 
 
+@st.dialog("Create New Form")
+def dialog_create_form():
+    form_title = st.text_input("Form title", placeholder="e.g. Customer Feedback Survey")
+    form_desc = st.text_area("Description (optional)", placeholder="e.g. Collect feedback about our services")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Create", type="primary", use_container_width=True):
+            if form_title.strip():
+                new_form = create_form(admin_email, form_title.strip(), form_desc.strip())
+                if new_form:
+                    refresh_form_list(admin_email)
+                    set_current_form(new_form["form_id"])
+                    st.session_state.pop("_show_create_form", None)
+                    st.success(f"Form '{form_title}' created!")
+                    st.rerun()
+            else:
+                st.error("Please enter a form title")
+    with col2:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.pop("_show_create_form", None)
+            st.rerun()
+
+
+@st.dialog("Confirm Delete Form")
+def dialog_delete_form_confirmation():
+    form_id = st.session_state.get("_confirm_delete_form_id")
+    forms = fetch_active_forms(admin_email)
+    form = next((f for f in forms if f["form_id"] == form_id), None)
+    
+    if not form:
+        st.error("Form not found")
+        return
+    
+    st.warning(f"⚠️ **Delete '{form['title']}'?**")
+    st.markdown(f"""
+    This will permanently delete:
+    - The form: **{form['title']}**
+    - All {len([x for x in forms if x['form_id'] == form_id])} responses
+    - All form settings and questions
+    
+    **This cannot be undone.**
+    """)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
+            delete_form_permanently(form_id, admin_email)
+            refresh_form_list(admin_email)
+            st.session_state.pop("_confirm_delete_form_id", None)
+            st.success(f"Form '{form['title']}' deleted.")
+            st.rerun()
+    
+    with col2:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.pop("_confirm_delete_form_id", None)
+            st.rerun()
+
+
+@st.dialog("Manage Forms", width="large")
+def dialog_manage_forms():
+    st.markdown("**Active Forms**")
+    forms = fetch_active_forms(admin_email)
+    
+    for form in forms:
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        with col1:
+            st.write(f"**{form['title']}**")
+            st.caption(form.get('description', 'No description'))
+        with col2:
+            st.metric("Responses", f"{len([x for x in forms if x['form_id'] == form['form_id']])}")
+        with col3:
+            if st.button("Edit", key=f"edit_{form['form_id']}", use_container_width=True):
+                st.session_state._edit_form_id = form['form_id']
+                st.session_state._show_edit_form = True
+        with col4:
+            if st.button("🗑️ Delete", key=f"delete_{form['form_id']}", use_container_width=True):
+                st.session_state._confirm_delete_form_id = form['form_id']
+                st.rerun()
+    
+    if st.button("Close", use_container_width=True):
+        st.session_state.pop("_show_manage_forms", None)
+        st.rerun()
+
+
 # ══════════════════════════════════════════
 # HEADER & METADATA
 # ══════════════════════════════════════════
 try:
-    meta_req  = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).limit(1).execute()
+    meta_req  = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).eq("form_id", current_form_id).limit(1).execute()
     form_meta = meta_req.data[0] if meta_req.data else {
         "title": "Land Public Transportation Respondent Survey",
         "description": "Please share your honest experience.",
@@ -257,6 +366,7 @@ if _meta_init_flag not in st.session_state:
 def update_meta():
     payload = {
         "admin_email": admin_email,
+        "form_id": current_form_id,
         "public_id": public_id,
         "title": st.session_state.get("meta_title", form_meta.get("title", "")),
         "description": st.session_state.get("meta_desc", form_meta.get("description", "")),
@@ -271,7 +381,7 @@ def update_meta():
         ),
     }
     try:
-        conn.client.table("form_meta").upsert(payload, on_conflict="admin_email").execute()
+        conn.client.table("form_meta").upsert(payload, on_conflict="form_id").execute()
         st.session_state.pop("form_meta_migration_needed", None)
         st.session_state.pop("form_meta_reach_out_migration_needed", None)
     except Exception as e:
@@ -286,7 +396,7 @@ def update_meta():
             payload.pop("reach_out_contact", None)
             stripped = True
         if stripped:
-            conn.client.table("form_meta").upsert(payload, on_conflict="admin_email").execute()
+            conn.client.table("form_meta").upsert(payload, on_conflict="form_id").execute()
         else:
             raise
 
@@ -294,10 +404,136 @@ st.markdown("""
 <div class="premium-header">
     <div>
         <h1>🛠️ Form Builder</h1>
-        <p>Design your Land Public Transportation Respondent Survey and manage question logic.</p>
+        <p>Design your surveys and manage question logic.</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# MANDATORY FORM SELECTION
+# ══════════════════════════════════════════
+st.markdown("### 📋 Select a Form to Edit")
+
+available_forms = st.session_state.get("available_forms", [])
+if not available_forms:
+    st.warning("No forms found.")
+    col_create, col_manage = st.columns(2)
+    with col_create:
+        if st.button("➕ Create Your First Form", type="primary", use_container_width=True):
+            st.session_state._show_create_form = True
+    with col_manage:
+        if st.button("⚙️ Manage Forms", use_container_width=True):
+            st.session_state._show_manage_forms = True
+    
+    # Trigger dialogs
+    if st.session_state.get("_show_create_form"):
+        dialog_create_form()
+    elif st.session_state.get("_show_manage_forms"):
+        dialog_manage_forms()
+    
+    st.stop()  # Block access to builder until form is created
+
+# Display form selection grid
+form_cols = st.columns(min(3, len(available_forms)))
+selected_form_id = None
+
+for idx, form in enumerate(available_forms):
+    col_idx = idx % len(form_cols)
+    with form_cols[col_idx]:
+        # Count responses for this form
+        try:
+            resp_count = conn.client.table("form_responses").select("id", count="exact").eq("form_id", form["form_id"]).eq("admin_email", admin_email).execute()
+            response_count = resp_count.count if hasattr(resp_count, "count") else 0
+        except:
+            response_count = 0
+        
+        # Compute colors/styles based on selection
+        is_selected = form["form_id"] == current_form_id
+        border_color = "#ffc570" if is_selected else "#dde3ef"
+        box_shadow = "0 4px 12px rgba(255,197,112,0.2)" if is_selected else "0 2px 4px rgba(0,0,0,0.05)"
+        status_text = "Active" if not form.get("is_archived") else "Archived"
+        
+        # Form card
+        card_html = f"""<div style="background: white; border: 2px solid {border_color}; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: {box_shadow};">
+            <div style="font-weight: 700; color: #1a2e55; font-size: 1.1rem; margin-bottom: 0.5rem;">{form['title']}</div>
+            <div style="color: #7c8db5; font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.4;">{form.get('description', 'No description')}</div>
+            <div style="display: flex; gap: 1rem;">
+                <div style="flex: 1;">
+                    <div style="font-size: 0.65rem; color: #7c8db5; text-transform: uppercase; font-weight: 700;">Responses</div>
+                    <div style="font-size: 1.3rem; font-weight: 700; color: #1a2e55;">{response_count}</div>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-size: 0.65rem; color: #7c8db5; text-transform: uppercase; font-weight: 700;">Status</div>
+                    <div style="font-size: 0.9rem; color: #4a7c59; font-weight: 600;">{status_text}</div>
+                </div>
+            </div>
+        </div>"""
+        st.markdown(card_html, unsafe_allow_html=True)
+        
+        # Select button
+        if st.button("📝 Edit Form", key=f"select_{form['form_id']}", use_container_width=True):
+            # Clear any open dialogs
+            st.session_state.pop("_show_create_form", None)
+            st.session_state.pop("_show_manage_forms", None)
+            st.session_state.pop("_confirm_delete_form_id", None)
+            st.session_state.pop("_show_demo_type_dialog", None)
+            st.session_state.pop("_confirm_del_qid", None)
+            st.session_state.pop("_confirm_del_bulk_ids", None)
+            
+            set_current_form(form["form_id"])
+            st.rerun()
+
+# Form management buttons
+col_create, col_manage = st.columns(2)
+with col_create:
+    if st.button("➕ Create New Form", use_container_width=True):
+        st.session_state._show_create_form = True
+
+with col_manage:
+    if st.button("⚙️ Manage Forms", use_container_width=True):
+        st.session_state._show_manage_forms = True
+
+# Trigger dialogs (only one at a time via if/elif)
+if st.session_state.get("_show_create_form"):
+    dialog_create_form()
+elif st.session_state.get("_show_manage_forms"):
+    dialog_manage_forms()
+elif st.session_state.get("_confirm_delete_form_id"):
+    dialog_delete_form_confirmation()
+elif st.session_state.get("_show_demo_type_dialog"):
+    dialog_demographic_invalid_type()
+elif st.session_state.get("_confirm_del_qid") is not None:
+    dialog_delete_single_question()
+elif st.session_state.get("_confirm_del_bulk_ids"):
+    dialog_delete_bulk_questions()
+
+st.markdown("<div style='margin:2rem 0; border-bottom:2px solid #e0e0e0'></div>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# BUILDER INTERFACE (only show after form selection)
+# ══════════════════════════════════════════
+available_forms = st.session_state.get("available_forms", [])
+form_is_selected = current_form_id and len([f for f in available_forms if f["form_id"] == current_form_id]) > 0
+
+if not form_is_selected:
+    st.info("👆 **Select a form above to begin editing questions and settings.**")
+    st.stop()  # Block access to builder until a form is selected
+
+# Get the selected form details
+selected_form = next((f for f in available_forms if f["form_id"] == current_form_id), None)
+if selected_form:
+    form_title = selected_form['title']
+    form_desc = selected_form.get('description', 'No description')
+    
+    info_html = f"""<div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+        <div style="font-weight: 700; color: #1a2e55;">✓ Currently Editing: {form_title}</div>
+        <div style="font-size: 0.85rem; color: #7c8db5; margin-top: 0.3rem;">{form_desc}</div>
+    </div>"""
+    st.markdown(info_html, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# FORM SETTINGS & METADATA
+# ══════════════════════════════════════════
 
 if st.session_state.get("form_meta_migration_needed"):
     st.error(
@@ -368,7 +604,7 @@ with col_share:
         )
 
 st.markdown('<div style="height:1.1rem"></div>', unsafe_allow_html=True)
-questions = fetch_questions()
+questions = fetch_questions(current_form_id)
 
 # ══════════════════════════════════════════
 # ADD NEW QUESTION
@@ -438,7 +674,9 @@ if not st.session_state.preview_mode:
                 else:
                     max_order = max((q.get("sort_order") or 0 for q in questions), default=0)
                     payload = {
-                        "admin_email": admin_email, "public_id": public_id,
+                        "admin_email": admin_email,
+                        "form_id": current_form_id,
+                        "public_id": public_id,
                         "prompt": new_prompt.strip(), "q_type": q_type,
                         "options": new_options, "is_required": is_required,
                         "is_demographic": bool(is_demographic_q),
@@ -813,10 +1051,3 @@ else:
                             st.rerun()
 
             st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
-
-        if st.session_state.get("_show_demo_type_dialog"):
-            dialog_demographic_invalid_type()
-        if st.session_state.get("_confirm_del_qid") is not None:
-            dialog_delete_single_question()
-        if st.session_state.get("_confirm_del_bulk_ids"):
-            dialog_delete_bulk_questions()

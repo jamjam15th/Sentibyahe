@@ -131,8 +131,24 @@ div.stButton > button:hover { transform: translateY(-2px) !important; box-shadow
 @st.cache_resource
 def load_sentiment_model():
     import transformers
-    model_path = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
-    return transformers.pipeline("sentiment-analysis", model=model_path, top_k=None, device=-1)
+    import os
+    
+    try:
+        if os.path.exists("model"):
+            model_path = "model"
+        else:
+            model_path = "jamjam15th/fine-tuned-land-public-transportation"
+        
+        return transformers.pipeline(
+            "sentiment-analysis",
+            model=model_path,
+            tokenizer=model_path,
+            top_k=None,
+            device=-1
+        )
+    except Exception as e:
+        st.error(f"❌ Model failed to load: {e}")
+        st.stop()
 
 
 @st.cache_resource(show_spinner="Loading comparison model…")
@@ -168,17 +184,21 @@ tab_single, tab_batch, tab_compare = st.tabs(
     ["Try one comment", "Upload a file", "Our model vs baselines"]
 )
 
+# ─── helper: unwrap top_k=None output ([[{...}]]) into a flat list of dicts ───
+def _unwrap(raw):
+    if isinstance(raw, list) and len(raw) > 0 and isinstance(raw[0], list):
+        return raw[0]
+    if isinstance(raw, list):
+        return raw
+    return [raw]
+
 with tab_single:
     st.write("**Type a short comment (English, Tagalog, or Taglish):**")
     user_input = st.text_area("", placeholder="Example: Sobrang init sa loob ng jeep...", height=120, label_visibility="collapsed")
     
     if st.button("🚀 Analyze Sentiment"):
         if user_input.strip():
-            raw_out = classifier(user_input.strip())
-            if isinstance(raw_out, list):
-                results = raw_out
-            else:
-                results = [raw_out]
+            results = _unwrap(classifier(user_input.strip()))
             scores_dict = {
                 label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
                 for res in results
@@ -230,8 +250,7 @@ with tab_batch:
                     sentiments = []
                     confidences = []
                     for text in df["feedback"].astype(str):
-                        raw = classifier(text)
-                        seq = raw if isinstance(raw, list) else [raw]
+                        seq = _unwrap(classifier(text))
                         top_res = max(seq, key=lambda x: x["score"])
                         sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
                         confidences.append(round(top_res["score"], 4))
@@ -272,7 +291,7 @@ with tab_compare:
 
     admin = st.session_state.get("user_email")
     if not admin:
-        st.warning("Please **log in** from the main app first. We only load comments from **your** respondents’ submissions.")
+        st.warning("Please **log in** from the main app first. We only load comments from **your** respondents' submissions.")
     else:
         dc1, dc2 = st.columns(2)
         with dc1:
@@ -425,7 +444,7 @@ with tab_compare:
                                 if not dis.empty:
                                     st.subheader("Comments where the baseline disagreed")
                                     st.caption(
-                                        f"Same text, two models — **{OUR_MODEL_DISPLAY_NAME}** (what the app saved) vs the **baseline** you picked. Read each line to see which label feels right for your respondents’ wording."
+                                        f"Same text, two models — **{OUR_MODEL_DISPLAY_NAME}** (what the app saved) vs the **baseline** you picked. Read each line to see which label feels right for your respondents' wording."
                                     )
                                     st.dataframe(
                                         dis.drop(columns=["Same label?"]),

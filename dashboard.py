@@ -5,6 +5,14 @@ import plotly.graph_objects as go
 import re
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
+from forms import (
+    init_form_session_state,
+    ensure_form_exists,
+    fetch_active_forms,
+    set_current_form,
+    get_current_form_id,
+    get_form,
+)
 
 def normalize_to_5(score, scale_max):
     if pd.isna(score):
@@ -185,6 +193,14 @@ if not admin_email:
     st.error("🔒 Please log in to view the dashboard.")
     st.stop()
 
+# Initialize multi-form session state
+init_form_session_state(admin_email)
+current_form_id = get_current_form_id()  # Get from session state, not ensure_form_exists
+if not current_form_id:
+    current_form_id = ensure_form_exists(admin_email)
+    if current_form_id:
+        st.session_state.current_form_id = current_form_id
+
 # ══════════════════════════════════════════
 # DIMENSION CONFIG — single source of truth
 # Adding/removing a dimension only needs a change here.
@@ -239,10 +255,10 @@ def analyze_text(text: str) -> tuple[str, float]:
 # Short TTL matches fragment interval so data re-fetches each live cycle.
 # ══════════════════════════════════════════
 @st.cache_data(ttl=5)
-def fetch_dashboard_data(email: str) -> pd.DataFrame:
+def fetch_dashboard_data(email: str, form_id: str) -> pd.DataFrame:
     try:
         r = (conn.client.table("form_responses")
-             .select("*").eq("admin_email", email)
+             .select("*").eq("admin_email", email).eq("form_id", form_id)
              .order("created_at").execute())
         return pd.DataFrame(r.data or [])
     except Exception as e:
@@ -250,12 +266,13 @@ def fetch_dashboard_data(email: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 @st.cache_data(ttl=120)
-def fetch_question_scale_map(email: str) -> dict:
+def fetch_question_scale_map(email: str, form_id: str) -> dict:
     """Return latest scale_max per question prompt from form schema."""
     try:
         r = (conn.client.table("form_questions")
              .select("prompt, scale_max")
              .eq("admin_email", email)
+             .eq("form_id", form_id)
              .execute())
         rows = r.data or []
         scale_map = {}
@@ -294,6 +311,67 @@ st.markdown("""
   <div class="live-badge"><span class="live-dot"></span> LIVE SYNC</div>
 </div>
 """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# MANDATORY FORM SELECTION
+# ══════════════════════════════════════════
+st.markdown("### 📋 Select a Form to View Analytics")
+
+available_forms = st.session_state.get("available_forms", [])
+if not available_forms:
+    st.warning("No forms found.")
+    if st.button("📝 Go to Form Builder", use_container_width=True):
+        st.switch_page("pages/builder.py")
+    st.stop()
+
+# Create form dropdown
+form_options = {form['title']: form['form_id'] for form in available_forms}
+form_labels = list(form_options.keys())
+
+# Find the currently selected form label
+current_label = None
+for form in available_forms:
+    if form['form_id'] == current_form_id:
+        current_label = form['title']
+        break
+
+selected_form_label = st.selectbox(
+    "Choose a form:",
+    form_labels,
+    index=form_labels.index(current_label) if current_label in form_labels else 0,
+    key="form_selector"
+)
+
+# Update selected form if changed
+selected_form_id = form_options[selected_form_label]
+if selected_form_id != current_form_id:
+    set_current_form(selected_form_id)
+    st.rerun()
+
+st.markdown("<div style='margin:2rem 0; border-bottom:2px solid #e0e0e0'></div>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# ANALYTICS DASHBOARD (only show after form selection)
+# ══════════════════════════════════════════
+available_forms = st.session_state.get("available_forms", [])
+form_is_selected = current_form_id and len([f for f in available_forms if f["form_id"] == current_form_id]) > 0
+
+if not form_is_selected:
+    st.info("👆 **Select a form above to view analytics.**")
+    st.stop()
+
+# Get the selected form details
+selected_form = next((f for f in available_forms if f["form_id"] == current_form_id), None)
+if selected_form:
+    form_title = selected_form['title']
+    
+    info_html = f"""<div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+        <div style="font-weight: 700; color: #1a2e55;">✓ Currently Viewing: {form_title}</div>
+        <div style="font-size: 0.85rem; color: #7c8db5; margin-top: 0.3rem;">Analyzing responses for this form. <a href="./builder" style="color: #ffc570; text-decoration: none; font-weight: 600;">Edit form →</a></div>
+    </div>"""
+    st.markdown(info_html, unsafe_allow_html=True)
+
+st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-head">🗓 Filter by Date Range</div>', unsafe_allow_html=True)
 cd1, cd2, _ = st.columns([2, 2, 4])
@@ -365,8 +443,8 @@ def _format_demo_cell(v):
 # ══════════════════════════════════════════
 @st.fragment(run_every=timedelta(seconds=5))
 def render_dashboard():
-    df_raw = fetch_dashboard_data(admin_email)
-    question_scale_map = fetch_question_scale_map(admin_email)
+    df_raw = fetch_dashboard_data(admin_email, current_form_id)
+    question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
 
     if df_raw.empty:
         st.markdown("""

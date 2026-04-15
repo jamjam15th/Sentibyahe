@@ -5,6 +5,7 @@ import uuid
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
 from streamlit_extras.stylable_container import stylable_container
+from forms import get_form, fetch_active_forms
 
 st.set_page_config(
     initial_sidebar_state="collapsed",
@@ -182,10 +183,18 @@ conn = st.connection("supabase", type=SupabaseConnection)
 
 # ── 1. FETCH LOGIC ──
 is_preview = False
+target_form_id = None
+owner_email = None
+
 if st.session_state.get("logged_in") and st.session_state.get("user_email"):
-    target_form_id = hashlib.md5(st.session_state.user_email.encode()).hexdigest()[:12]
+    # Preview mode for logged-in users
+    owner_email = st.session_state.user_email
+    # Try new multi-form system first, fall back to legacy ID
+    from forms import get_legacy_form_id
+    target_form_id = st.query_params.get("form_id") or get_legacy_form_id(owner_email)
     is_preview = True
 else:
+    # Public survey access
     query_params = st.query_params
     if "form_id" not in query_params:
         st.error("⚠️ Invalid survey link.")
@@ -193,17 +202,32 @@ else:
     target_form_id = query_params["form_id"]
 
 try:
-    meta_res = conn.client.table("form_meta").select("*").eq("public_id", target_form_id).execute()
-    form_meta = meta_res.data[0] if meta_res.data else {
-        "title": "Land public transportation survey",
-        "description": "",
-        "include_demographics": False,
-        "allow_multiple_responses": True,
-        "reach_out_contact": "",
-    }
-    q_res = conn.client.table("form_questions").select("*").eq("public_id", target_form_id).order("sort_order").execute()
+    # For public access, we need to get the form and owner_email from form_meta using form_id
+    if not is_preview:
+        # Public access: look up form_id in form_meta to find owner_email
+        meta_res = conn.client.table("form_meta").select("*").eq("form_id", target_form_id).limit(1).execute()
+        if meta_res.data:
+            owner_email = meta_res.data[0].get("admin_email")
+            form_meta = meta_res.data[0]
+        else:
+            st.error("⚠️ Survey not found.")
+            st.stop()
+    else:
+        # Preview mode: query using owner_email
+        meta_res = conn.client.table("form_meta").select("*").eq("admin_email", owner_email).eq("form_id", target_form_id).execute()
+        form_meta = meta_res.data[0] if meta_res.data else {
+            "title": "Land public transportation survey",
+            "description": "",
+            "include_demographics": False,
+            "allow_multiple_responses": True,
+            "reach_out_contact": "",
+        }
+    
+    # Get questions using form_id and owner_email
+    q_res = conn.client.table("form_questions").select("*").eq("admin_email", owner_email).eq("form_id", target_form_id).order("sort_order").execute()
     custom_questions = q_res.data or []
-except Exception:
+except Exception as e:
+    st.error(f"⚠️ Could not load survey: {str(e)}")
     st.stop()
 
 # Stable browser-tab id in URL so "one response" survives reload (not just session_state).
@@ -506,7 +530,8 @@ elif len(form_schema) > 0:
 
                     payload = {
                         "public_id": target_form_id,
-                        "admin_email": form_meta.get("admin_email", ""),
+                        "form_id": target_form_id,
+                        "admin_email": owner_email or form_meta.get("admin_email", ""),
                         **({"client_submission_id": client_cid} if client_cid else {}),
                         "answers": user_answers,
                         "demo_answers": demo_answers,
