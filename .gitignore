@@ -1,2 +1,5 @@
 api_keys.txt
 .streamlit/secrets.toml
+model/training_args.bin
+.gitignore
+model/model.safetensors

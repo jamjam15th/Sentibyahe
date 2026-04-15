@@ -134,8 +134,17 @@ def load_sentiment_model():
     import os
     
     try:
-        if os.path.exists("model"):
-            model_path = "model"
+        # Use online model in production, local for development
+        use_online = os.getenv("USE_ONLINE_MODEL", "false").lower() == "true"
+        
+        if not use_online:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            local_model_path = os.path.join(script_dir, "model")
+            
+            if os.path.exists(local_model_path) and os.path.exists(os.path.join(local_model_path, "model.safetensors")):
+                model_path = local_model_path
+            else:
+                model_path = "jamjam15th/fine-tuned-land-public-transportation"
         else:
             model_path = "jamjam15th/fine-tuned-land-public-transportation"
         
