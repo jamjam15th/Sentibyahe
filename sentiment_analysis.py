@@ -144,9 +144,9 @@ def load_sentiment_model():
             if os.path.exists(local_model_path) and os.path.exists(os.path.join(local_model_path, "model.safetensors")):
                 model_path = local_model_path
             else:
-                model_path = "jamjam15th/fine-tuned-land-public-transportation"
+                model_path = "jamjam15th/land-public-transportation-model-2"
         else:
-            model_path = "jamjam15th/fine-tuned-land-public-transportation"
+            model_path = "jamjam15th/land-public-transportation-model-2"
         
         return transformers.pipeline(
             "sentiment-analysis",
