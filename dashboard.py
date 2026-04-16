@@ -427,37 +427,33 @@ if selected_form:
         except:
             date_created = "Unknown"
 
-    # Clean single-row header bar
-    header_html = f"""
-    <div style="display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem;">
-        <div>
-            <div style="font-size: 0.75rem; color: #7c8db5; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Currently Analyzing</div>
-            <div style="font-size: 1.2rem; font-weight: 700; color: #1a2e55; margin-top: 0.3rem;">{form_title}</div>
-        </div>
-        <div style="display: flex; gap: 2rem; font-size: 0.9rem;">
-            <div style="text-align: center;">
-                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Created</div>
-                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{date_created}</div>
-            </div>
-            <div style="border-left: 1px solid rgba(124, 141, 181, 0.3);"></div>
-            <div style="text-align: center;">
-                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Questions</div>
-                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{question_count}</div>
-            </div>
-            <div style="border-left: 1px solid rgba(124, 141, 181, 0.3);"></div>
-            <div style="text-align: center;">
-                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Responses</div>
-                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{response_count}</div>
-            </div>
-        </div>
-    </div>
-    """
-    st.markdown(header_html, unsafe_allow_html=True)
+    # Responsive header section
+    st.markdown('<div style="height: 0.5rem"></div>', unsafe_allow_html=True)
     
-    col1, col2 = st.columns([4, 1])
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); 
+                    border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem 1.2rem;">
+            <div style="font-size: 0.72rem; color: #7c8db5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Currently Analyzing</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: #1a2e55; margin-top: 0.4rem; line-height: 1.3;">{form_title}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col2:
-        if st.button("✏️ Edit", use_container_width=True, help="Switch to Form Builder"):
-            st.switch_page("builder.py")
+        st.metric("Created", date_created)
+    
+    with col3:
+        st.metric("Questions", question_count)
+    
+    with col4:
+        st.metric("Responses", response_count)
+    
+    st.markdown('<div style="height: 0.5rem"></div>', unsafe_allow_html=True)
+    
+    if st.button("✏️ Edit Form", use_container_width=False, help="Switch to Form Builder"):
+        st.switch_page("builder.py")
 
 st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
 
