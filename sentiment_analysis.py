@@ -184,13 +184,13 @@ st.markdown("""
 <div class="premium-header">
     <div>
         <h1>🧠 Analysis</h1>
-        <p>Run <strong>fine-tuned XLM-RoBERTa</strong> on text or files, or open <strong>Our model vs baselines</strong> to see how your saved labels compare with other standard models on the same respondent comments (English, Tagalog, or mixed).</p>
+        <p>Run <strong>fine-tuned XLM-RoBERTa</strong> on text or files, or open <strong>Compare Models</strong> to see how our model performs against industry baseline models on your feedback (English, Tagalog, or mixed).</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 tab_single, tab_batch, tab_compare = st.tabs(
-    ["Try one comment", "Upload a file", "Our model vs baselines"]
+    ["Try one comment", "Upload a file", "Compare Models"]
 )
 
 # ─── helper: unwrap top_k=None output ([[{...}]]) into a flat list of dicts ───
@@ -318,211 +318,209 @@ with tab_batch:
 
 
 with tab_compare:
-    st.markdown(
-        f"""
-**Our model vs baselines — what this tab is for**
-
-1. **Model Comparison Overview** - This section presents a **side-by-side comparison** between our fine-tuned sentiment analysis model and baseline models. The goal is to evaluate how effectively each model classifies feedback related to **land public transportation**.
-
-2. **Purpose of Comparison** - The comparison demonstrates why our model is **better suited** for transportation sentiment analysis and allows users to see the **strengths and weaknesses** of each approach.
-
-3. **Models Included** - **Fine-tuned Model (Primary Model):** A customized model trained on **transportation-related data** to improve **accuracy** and **contextual understanding**. - **Baseline Models:** General-purpose sentiment models used as **benchmarks** for comparison.
-
-4. **Evaluation Criteria** - Models are evaluated based on **accuracy** in sentiment classification (**positive, neutral, negative**), ability to understand **transportation-related context**, and **consistency** across feedback samples.
-
-5. **Why Results May Differ** - Differences occur due to variations in **training datasets**, **model architecture**, and level of **domain-specific fine-tuning**. General models may misinterpret **transportation-related terms**, while the fine-tuned model is **optimized for this domain**.
-        """
-    )
-
-    admin = st.session_state.get("user_email")
-    if not admin:
-        st.warning("Please **log in** from the main app first. We only load comments from **your** respondents' submissions.")
-    else:
-        dc1, dc2 = st.columns(2)
-        with dc1:
-            cmp_from = st.date_input(
-                "From date",
-                value=datetime.today() - timedelta(days=30),
-                key="cmp_date_from",
-            )
-        with dc2:
-            cmp_to = st.date_input(
-                "To date",
-                value=datetime.today(),
-                key="cmp_date_to",
-            )
-
-        try:
-            r = (
-                conn.client.table("form_responses")
-                .select("*")
-                .eq("admin_email", admin)
-                .order("created_at")
-                .execute()
-            )
-            df_all = pd.DataFrame(r.data or [])
-        except Exception as e:
-            df_all = pd.DataFrame()
-            st.error(f"Could not load your responses: {e}")
-
-        if df_all.empty:
-            st.info("No survey responses found yet. Collect some answers from your public link, then come back here.")
+    st.markdown("### 🤖 Upload Feedback to Compare Models")
+    
+    st.markdown("""
+    **Why use this?**
+    
+    Compare how our fine-tuned XLM-RoBERTa model performs against a baseline model of your choice. This helps you:
+    - Verify model accuracy on your specific feedback domain
+    - Understand how our model compares to industry standard models
+    - Identify cases where models disagree (potential edge cases or ambiguous sentiment)
+    - Make informed decisions about model reliability for your use case
+    """)
+    
+    st.info("Upload a CSV or Excel file with a **feedback** column and select a baseline model to compare.")
+    
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"], key="model_compare_upload")
+    
+    if uploaded_file is not None:
+        # Store file data in session state for consistent reads across model selections
+        if "comparison_file_data" not in st.session_state or st.session_state.comparison_file_name != uploaded_file.name:
+            st.session_state.comparison_file_data = uploaded_file.getvalue()
+            st.session_state.comparison_file_name = uploaded_file.name
+            st.session_state.comparison_file_is_csv = uploaded_file.type == "text/csv" or uploaded_file.name.endswith(".csv")
+        
+        # Read file fresh from stored data (ensures clean dataframe each time)
+        import io
+        if st.session_state.comparison_file_is_csv:
+            df = pd.read_csv(io.BytesIO(st.session_state.comparison_file_data))
         else:
-            if "created_at" in df_all.columns:
-                df_all["created_at"] = pd.to_datetime(
-                    df_all["created_at"], utc=True, errors="coerce"
-                ).dt.tz_localize(None)
-                mask = (df_all["created_at"].dt.date >= cmp_from) & (
-                    df_all["created_at"].dt.date <= cmp_to
-                )
-                df_win = df_all.loc[mask].copy()
-            else:
-                df_win = df_all.copy()
-
-            if df_win.empty:
-                st.info("No responses fall in the dates you picked. Try a wider **From / To** range.")
-            else:
-                sent_col = "sentiment_status"
-                if sent_col not in df_win.columns or "raw_feedback" not in df_win.columns:
-                    st.info("Your data does not include mood labels or comment text yet.")
-                else:
-                    ok_sent = df_win[sent_col].isin(["POSITIVE", "NEUTRAL", "NEGATIVE"])
-                    txt = df_win["raw_feedback"].astype(str).str.strip()
-                    df_use = df_win[ok_sent & txt.ne("")].copy()
-                    if df_use.empty:
-                        st.info("No labeled comments with text in this date range.")
+            df = pd.read_excel(io.BytesIO(st.session_state.comparison_file_data))
+        
+        if 'feedback' not in df.columns:
+            st.error("⚠️ File must have a column named exactly **feedback**")
+        else:
+            # ═══════════════════════════════════════════════════════════════
+            # SELECT BASELINE MODEL
+            # ═══════════════════════════════════════════════════════════════
+            st.subheader("Step 1: Select a Baseline Model")
+            
+            # Create display labels without "Baseline — " prefix
+            model_options = {i: model for i, model in enumerate(COMPARISON_MODEL_CHOICES)}
+            model_display = {i: model["user_label"].split(" — ")[1] if " — " in model["user_label"] else model["user_label"] for i, model in model_options.items()}
+            
+            selected_idx = st.selectbox(
+                "Choose a baseline model to compare against our model",
+                options=list(model_options.keys()),
+                format_func=lambda idx: model_display[idx],
+                key="baseline_model_select"
+            )
+            selected_model = model_options[selected_idx]
+            
+            st.subheader(f"📊 Analyzing {len(df)} feedback comments...")
+            
+            if st.button("🔍 Run Comparison", type="primary", key="run_comparison"):
+                with st.spinner("Running our model and selected baseline (this may take a minute)..."):
+                    from transformers import pipeline as hf_pipeline
+                    
+                    # Create a fresh dataframe with ONLY feedback column (ensures no old predictions)
+                    fresh_df = df[["feedback"]].copy()
+                    
+                    # Run OUR model
+                    our_predictions = []
+                    our_confidences = []
+                    
+                    for text in fresh_df["feedback"].astype(str):
+                        seq = _unwrap(classifier(text))
+                        top_res = max(seq, key=lambda x: x["score"])
+                        our_predictions.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
+                        our_confidences.append(round(top_res["score"], 4))
+                    
+                    fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Prediction"] = our_predictions
+                    fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Confidence"] = our_confidences
+                    
+                    # Run SELECTED baseline model
+                    baseline_name = selected_model["user_label"].split(" — ")[0]
+                    model_id = selected_model["model_id"]
+                    kind = selected_model["kind"]
+                    
+                    try:
+                        baseline_pipe = hf_pipeline("sentiment-analysis", model=model_id)
+                        baseline_preds = []
+                        baseline_confs = []
+                        
+                        for text in fresh_df["feedback"].astype(str):
+                            try:
+                                res = baseline_pipe(text[:512])[0]
+                                sent, conf = normalize_comparison_prediction(kind, res)
+                                baseline_preds.append(sent)
+                                baseline_confs.append(round(conf, 4))
+                            except:
+                                baseline_preds.append("NEUTRAL")
+                                baseline_confs.append(0.0)
+                        
+                        fresh_df[f"{baseline_name} Prediction"] = baseline_preds
+                        fresh_df[f"{baseline_name} Confidence"] = baseline_confs
+                        
+                    except Exception as e:
+                        st.error(f"Could not load model: {e}")
+                        st.stop()
+                    
+                    st.session_state.comparison_df = fresh_df
+                    st.session_state.comparison_baseline = baseline_name
+                    st.session_state.comparison_our_model = OUR_MODEL_DISPLAY_NAME
+                    st.success("✅ Comparison complete!")
+                    st.rerun()
+            
+            if "comparison_df" in st.session_state:
+                df_results = st.session_state.comparison_df
+                our_col = f"{st.session_state.comparison_our_model} Prediction"
+                baseline_col = f"{st.session_state.comparison_baseline} Prediction"
+                our_conf_col = f"{st.session_state.comparison_our_model} Confidence"
+                baseline_conf_col = f"{st.session_state.comparison_baseline} Confidence"
+                
+                # ═══════════════════════════════════════════════════════════════
+                # 1. DETAILED PREDICTION TABLE
+                # ═══════════════════════════════════════════════════════════════
+                st.subheader("📋 Detailed Predictions Comparison")
+                
+                display_cols = ["feedback", our_col, our_conf_col, baseline_col, baseline_conf_col]
+                display_df = df_results[display_cols].head(15)
+                st.dataframe(display_df, use_container_width=True, height=400)
+                
+                # ═══════════════════════════════════════════════════════════════
+                # 2. AGREEMENT METRICS
+                # ═══════════════════════════════════════════════════════════════
+                st.subheader("🎯 Model Comparison Metrics")
+                
+                # Normalize both to uppercase for fair comparison
+                matches = (df_results[our_col].str.upper() == df_results[baseline_col].str.upper()).sum()
+                match_pct = (matches / len(df_results) * 100) if len(df_results) > 0 else 0
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(
+                        f"{st.session_state.comparison_our_model}",
+                        "Our Model",
+                        ""
+                    )
+                with col2:
+                    st.metric(
+                        f"{st.session_state.comparison_baseline}",
+                        "Selected Baseline",
+                        ""
+                    )
+                
+                st.divider()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Agreement Rate", f"{match_pct:.1f}%", f"{matches}/{len(df_results)} cases")
+                with col2:
+                    disagreement_count = len(df_results) - matches
+                    st.metric("Disagreement Rate", f"{100-match_pct:.1f}%", f"{disagreement_count}/{len(df_results)} cases")
+                
+                # ═══════════════════════════════════════════════════════════════
+                # 3. DISAGREEMENT CASES
+                # ═══════════════════════════════════════════════════════════════
+                if match_pct < 100:
+                    st.subheader("⚡ Cases Where Models Disagree")
+                    
+                    # Normalize both columns for comparison
+                    disagreement_mask = df_results[our_col].str.upper() != df_results[baseline_col].str.upper()
+                    disagreement_cases = df_results[disagreement_mask][["feedback", our_col, baseline_col]].head(10)
+                    
+                    if len(disagreement_cases) > 0:
+                        st.dataframe(
+                            disagreement_cases.rename(columns={
+                                our_col: f"{st.session_state.comparison_our_model}",
+                                baseline_col: f"{st.session_state.comparison_baseline}"
+                            }),
+                            use_container_width=True,
+                            height=350
+                        )
                     else:
-                        pick_label = st.selectbox(
-                            "Which baseline model should we run on the same comments?",
-                            [c["user_label"] for c in COMPARISON_MODEL_CHOICES],
-                            key="cmp_model_pick",
-                        )
-                        choice = next(
-                            c for c in COMPARISON_MODEL_CHOICES if c["user_label"] == pick_label
-                        )
-                        model_b_id = choice["model_id"]
-                        kind_b = choice["kind"]
-
-                        nmax = len(df_use)
-
-                        presets = [1, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500]
-                        count_choices = sorted({c for c in presets if 1 <= c <= nmax} | {nmax})
-                        if not count_choices:
-                            count_choices = [max(1, nmax)]
-
-                        def _limit_label(n: int) -> str:
-                            if n >= nmax:
-                                return f"All {nmax} comment(s) in this date range (newest first)"
-                            return f"Only the {n} newest comment(s) — skip the older {nmax - n}"
-
-                        limit_pairs = [(n, _limit_label(n)) for n in count_choices]
-                        default_n = min(50, nmax)
-                        default_i = min(
-                            range(len(limit_pairs)),
-                            key=lambda i: abs(limit_pairs[i][0] - default_n),
-                        )
-                        pick_lbl = st.selectbox(
-                            "How many comments should we send to the baseline model?",
-                            [lbl for _, lbl in limit_pairs],
-                            index=default_i,
-                            key="cmp_limit_pick",
-                            help="Starts from the latest submission and works backward. Smaller numbers run faster.",
-                        )
-                        max_cmp = next(n for n, lbl in limit_pairs if lbl == pick_lbl)
-
-                        if st.button("Run comparison", type="primary", key="cmp_run_btn"):
-                            rows_cmp = []
-                            if "created_at" in df_use.columns:
-                                sub = df_use.sort_values("created_at", ascending=False).head(max_cmp)
-                            else:
-                                sub = df_use.head(max_cmp)
-
-                            with st.spinner("Loading the baseline model and scoring your comments…"):
-                                pipe_b = load_comparison_pipeline(model_b_id)
-                                for _, row in sub.iterrows():
-                                    txtv = str(row.get("raw_feedback") or "").strip()
-                                    if not txtv:
-                                        continue
-                                    lab_a = str(row.get(sent_col) or "").strip().upper()
-                                    if lab_a not in ("POSITIVE", "NEUTRAL", "NEGATIVE"):
-                                        continue
-                                    raw_b = pipe_b(txtv[:512])
-                                    seq_b = raw_b if isinstance(raw_b, list) else [raw_b]
-                                    res_b = max(seq_b, key=lambda x: x["score"])
-                                    lab_b, sc_b = normalize_comparison_prediction(kind_b, res_b)
-                                    rows_cmp.append(
-                                        {
-                                            f"Ours ({OUR_MODEL_DISPLAY_NAME})": lab_a,
-                                            "Baseline model": lab_b,
-                                            "Baseline confidence": f"{sc_b * 100:.1f}%",
-                                            "Same label?": "Yes" if lab_a == lab_b else "No",
-                                            "Comment (short)": (txtv[:400] + "…") if len(txtv) > 400 else txtv,
-                                            "When": row.get("created_at"),
-                                        }
-                                    )
-
-                            cmp_df = pd.DataFrame(rows_cmp)
-                            if cmp_df.empty:
-                                st.warning("Nothing to compare in this slice.")
-                            else:
-                                agree = cmp_df["Same label?"] == "Yes"
-                                agree_pct = 100.0 * float(agree.mean())
-                                m1, m2, m3 = st.columns(3)
-                                m1.metric("Comments compared", len(cmp_df))
-                                m2.metric("Baseline agreed with ours", f"{agree_pct:.0f}%")
-                                m3.metric("Baseline disagreed", int((~agree).sum()))
-
-                                col_ours = f"Ours ({OUR_MODEL_DISPLAY_NAME})"
-                                st.subheader("Match summary")
-                                st.caption(
-                                    f"Each cell counts how many comments got that **{OUR_MODEL_DISPLAY_NAME}** label (row) and that **baseline** label (column). "
-                                    "The diagonal is where **both models agreed**. Off-diagonal cells are **disagreements** — often worth reading when the text is Tagalog or mixed."
-                                )
-                                ct = pd.crosstab(
-                                    cmp_df[col_ours],
-                                    cmp_df["Baseline model"],
-                                    margins=True,
-                                )
-                                st.dataframe(ct, use_container_width=True)
-
-                                dis = cmp_df[cmp_df["Same label?"] == "No"].copy()
-                                if not dis.empty:
-                                    st.subheader("Comments where the baseline disagreed")
-                                    st.caption(
-                                        f"Same text, two models — **{OUR_MODEL_DISPLAY_NAME}** (what the app saved) vs the **baseline** you picked. Read each line to see which label feels right for your respondents' wording."
-                                    )
-                                    st.dataframe(
-                                        dis.drop(columns=["Same label?"]),
-                                        use_container_width=True,
-                                        hide_index=True,
-                                        height=min(480, 80 + 28 * len(dis)),
-                                    )
-
-                                st.caption(
-                                    "The first time you use a baseline, download can take a minute. Nothing here rewrites your database — saved sentiment stays from **fine-tuned XLM-RoBERTa**."
-                                )
-
-    with st.expander("Quick guide (for anyone using this tab)", expanded=False):
-        st.markdown(
-            f"""
-**Understanding the Comparison Interface**
-
-This page provides a comparative analysis of two sentiment classifications for a given piece of feedback: the results from our **Fine-tuned XLM-RoBERTa** (the primary model used in the application) and a **baseline model** of your selection. Both models categorize the feedback into **positive, neutral, or negative** sentiments.
-
-**Why do the models yield different results?**
-
-Variances in predictions stem from differences in underlying training data and model architecture. Many baseline models are restricted to **monolingual English datasets** or derive sentiment by mapping **5-star rating scales** into categorical labels. Conversely, our **fine-tuned XLM-RoBERTa** is **natively multilingual** and explicitly designed to output the exact **ternary classification** used by this dashboard.
-
-**Why is our fine-tuned model optimal for this dataset?**
-
-The collected feedback frequently consists of **concise, code-switched (English and Tagalog) text**. A specialized multilingual model is inherently better equipped to process these linguistic nuances and accurately capture contextual sentiment compared to **standard monolingual** or **rating-mapped baselines**.
-
-**How should the "Agreement" percentage be interpreted?**
-
-This percentage indicates how often both models assigned the **identical sentiment label** to a specific comment. Please note that this is strictly a measure of **agreement**, not an **empirical accuracy score**. In instances of divergence, we recommend a **manual review** of the comment to determine the most contextually accurate label.
-
-**Will these comparisons affect my saved data?**
-
-**No.** Baseline predictions are generated dynamically for comparative purposes on this specific page only. Your core dashboard metrics and exported datasets will remain unaltered, relying solely on the official labels generated by the **Fine-tuned XLM-RoBERTa** model.
-            """
-        )
+                        st.success("All models agree on all feedback! 🎉")
+                else:
+                    st.success("✅ Perfect agreement! All predictions match!")
+                
+                # ═══════════════════════════════════════════════════════════════
+                # 4. SENTIMENT DISTRIBUTION COMPARISON
+                # ═══════════════════════════════════════════════════════════════
+                st.subheader("📈 Sentiment Distribution")
+                
+                dist_data = {
+                    st.session_state.comparison_our_model: df_results[our_col].value_counts(),
+                    st.session_state.comparison_baseline: df_results[baseline_col].value_counts()
+                }
+                
+                dist_df = pd.DataFrame(dist_data).fillna(0).astype(int)
+                st.bar_chart(dist_df)
+                
+                # ═══════════════════════════════════════════════════════════════
+                # 5. DOWNLOAD RESULTS
+                # ═══════════════════════════════════════════════════════════════
+                st.subheader("💾 Export Results")
+                csv_data = df_results.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Comparison Results (CSV)",
+                    data=csv_data,
+                    file_name="model_comparison_results.csv",
+                    mime="text/csv",
+                )
+                
+                # Reset button
+                if st.button("🔄 Try Different Model"):
+                    st.session_state.pop("comparison_df", None)
+                    st.rerun()

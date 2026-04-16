@@ -51,16 +51,19 @@ COMPARISON_MODEL_CHOICES: list[dict[str, str]] = [
     {
         "user_label": "Baseline — cardiffnlp/twitter-roberta-base-sentiment-latest (RoBERTa · English Twitter · 3-class)",
         "model_id": "cardiffnlp/twitter-roberta-base-sentiment-latest",
+        "short_name": "Twitter RoBERTa",
         "kind": "cardiff3",
     },
     {
         "user_label": "Baseline — nlptown/bert-base-multilingual-uncased-sentiment (BERT multilingual · stars → 3-class)",
         "model_id": "nlptown/bert-base-multilingual-uncased-sentiment",
+        "short_name": "Multilingual BERT",
         "kind": "stars",
     },
     {
         "user_label": "Baseline — distilbert-base-uncased-finetuned-sst-2-english (DistilBERT · SST-2 English · binary + uncertain → neutral)",
         "model_id": "distilbert-base-uncased-finetuned-sst-2-english",
+        "short_name": "DistilBERT SST-2",
         "kind": "sst2",
     },
 ]
