@@ -274,35 +274,6 @@ def dialog_create_form():
             st.rerun()
 
 
-@st.dialog("Rename Form")
-def dialog_rename_form():
-    form_id = st.session_state.get("_rename_form_id") or current_form_id
-    forms = fetch_active_forms(admin_email)
-    form = next((f for f in forms if f["form_id"] == form_id), None)
-    
-    if not form:
-        st.error("Form not found")
-        return
-    
-    new_name = st.text_input("Form name", value=form.get("title", ""), placeholder="Enter new form name")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Save", type="primary", use_container_width=True):
-            if new_name.strip():
-                update_form(form_id, admin_email, title=new_name.strip())
-                refresh_form_list(admin_email)
-                st.session_state.pop("_show_rename_form", None)
-                st.success(f"Form renamed to '{new_name}'!")
-                st.rerun()
-            else:
-                st.error("Please enter a form name")
-    with col2:
-        if st.button("Cancel", use_container_width=True):
-            st.session_state.pop("_show_rename_form", None)
-            st.rerun()
-
-
 @st.dialog("Confirm Delete Form")
 def dialog_delete_form_confirmation():
     form_id = st.session_state.get("_confirm_delete_form_id")
@@ -510,15 +481,11 @@ with sc2:
         st.session_state._show_create_form = True
 
 with sc3:
-    if st.button("✏️ Rename", use_container_width=True, help="Rename current form"):
-        st.session_state._show_rename_form = True
-        st.rerun()
+    st.markdown("")
 
 # Trigger dialogs (only one at a time via if/elif)
 if st.session_state.get("_show_create_form"):
     dialog_create_form()
-elif st.session_state.get("_show_rename_form"):
-    dialog_rename_form()
 elif st.session_state.get("_confirm_delete_multiple_forms"):
     dialog_delete_multiple_forms_confirmation()
 elif st.session_state.get("_confirm_delete_form_id"):
@@ -566,6 +533,24 @@ with tab_settings:
     sc1, sc2 = st.columns([1.2, 1])
     
     with sc1:
+        st.subheader("� Form Identity")
+        current_form_name = st.session_state.get("meta_form_name", "")
+        st.write(current_form_name)
+        
+        # Display form name and rename button
+        id_col1, id_col2 = st.columns([4, 1])
+        with id_col1:
+            st.markdown(f"<div style='font-size: 1.1rem; font-weight: 500; color: #1a2e55; padding: 0.75rem; background: #f8f9fa; border-radius: 6px;'>{current_form_name or '(No name set)'}</div>", unsafe_allow_html=True)
+        with id_col2:
+            if st.button("✏️ Rename", use_container_width=True, help="Rename your form"):
+                st.session_state._show_rename_form = True
+                st.rerun()
+        
+        if st.session_state.get("_show_rename_form"):
+            dialog_rename_form()
+        
+        st.divider()
+        
         st.subheader("📋 Survey Copy")
         st.text_input("Survey title", key="meta_title")
         st.text_area("Description (optional)", key="meta_desc", height=80, placeholder="A few words about what you're asking")

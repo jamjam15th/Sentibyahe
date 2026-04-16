@@ -409,11 +409,55 @@ selected_form = next((f for f in available_forms if f["form_id"] == current_form
 if selected_form:
     form_title = selected_form['title']
     
-    info_html = f"""<div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
-        <div style="font-weight: 700; color: #1a2e55;">✓ Currently Viewing: {form_title}</div>
-        <div style="font-size: 0.85rem; color: #7c8db5; margin-top: 0.3rem;">Analyzing responses for this form. <a href="./builder" style="color: #ffc570; text-decoration: none; font-weight: 600;">Edit form →</a></div>
-    </div>"""
-    st.markdown(info_html, unsafe_allow_html=True)
+    # Fetch question count
+    questions = conn.client.table("form_questions").select("form_id").eq("form_id", current_form_id).eq("admin_email", admin_email).execute().data or []
+    question_count = len(questions)
+
+    # Fetch response count
+    responses = conn.client.table("form_responses").select("form_id").eq("form_id", current_form_id).execute().data or []
+    response_count = len(responses)
+
+    # Format creation date
+    created_at = selected_form.get('created_at', '')
+    date_created = ""
+    if created_at:
+        try:
+            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            date_created = dt.strftime('%b %d, %Y')
+        except:
+            date_created = "Unknown"
+
+    # Clean single-row header bar
+    header_html = f"""
+    <div style="display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); border-left: 4px solid #ffc570; border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem;">
+        <div>
+            <div style="font-size: 0.75rem; color: #7c8db5; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Currently Analyzing</div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: #1a2e55; margin-top: 0.3rem;">{form_title}</div>
+        </div>
+        <div style="display: flex; gap: 2rem; font-size: 0.9rem;">
+            <div style="text-align: center;">
+                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Created</div>
+                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{date_created}</div>
+            </div>
+            <div style="border-left: 1px solid rgba(124, 141, 181, 0.3);"></div>
+            <div style="text-align: center;">
+                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Questions</div>
+                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{question_count}</div>
+            </div>
+            <div style="border-left: 1px solid rgba(124, 141, 181, 0.3);"></div>
+            <div style="text-align: center;">
+                <div style="color: #7c8db5; font-weight: 500; font-size: 0.8rem;">Responses</div>
+                <div style="color: #1a2e55; font-weight: 600; margin-top: 0.2rem;">{response_count}</div>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(header_html, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([4, 1])
+    with col2:
+        if st.button("✏️ Edit", use_container_width=True, help="Switch to Form Builder"):
+            st.switch_page("builder.py")
 
 st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
 

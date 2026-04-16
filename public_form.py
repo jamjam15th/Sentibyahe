@@ -271,19 +271,11 @@ def _already_submitted_for_client(public_id: str, cid: str) -> bool:
 LPT_TRANSPORT_MODE_OPTIONS = [
     "Jeepney",
     "Modern jeepney / E-jeep",
-    "Ordinary bus",
-    "Air-conditioned bus",
+    "Bus",
     "UV Express",
-    "Van pool (UV-style)",
     "Tricycle",
-    "Motorcycle taxi (habal-habal)",
     "Train (MRT / LRT / PNR)",
-    "Taxi",
     "TNVS (Grab, etc.)",
-    "Ferry / boat",
-    "Walking / cycling",
-    "Company or school service",
-    "Private car (as passenger)",
     "Other",
 ]
 
