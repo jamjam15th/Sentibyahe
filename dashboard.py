@@ -349,7 +349,7 @@ def analyze_per_question_sentiments(rows: list[dict]):
 st.markdown("""
 <div class="dash-header">
   <div>
-    <h1>📊 Sentiment Dashboardasdfasdf</h1>
+    <h1>📊 Sentiment Dashboard</h1>
     <p class="sub">Land Public Transportation Experience · SERVQUAL Analysis</p>
   </div>
   <div class="live-badge"><span class="live-dot"></span> LIVE SYNC</div>
