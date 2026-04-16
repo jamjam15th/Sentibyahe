@@ -601,8 +601,10 @@ with tab_settings:
         if st.button("💾 Save All Settings", type="primary", use_container_width=True):
             success = update_meta()
             if success:
-                refresh_form_list(admin_email)
                 st.success("✅ Settings saved successfully!")
+                refresh_form_list(admin_email)
+                import time
+                time.sleep(1)
                 st.rerun()
             else:
                 st.error("❌ Failed to save settings. Please try again.")
@@ -734,7 +736,9 @@ with tab_questions:
                 if q_type in ("Multiple Choice", "Multiple Select") and servqual_dim is None:
                     is_demographic_q = st.checkbox("Mark as demographic", value=False, help="Fixed options for demographics profile")
             with opt3:
-                enable_sentiment = st.checkbox("Enable sentiment analysis", value=True, help="Analyze responses for sentiment")
+                enable_sentiment = False
+                if q_type in ("Short Answer", "Paragraph"):
+                    enable_sentiment = st.checkbox("Enable sentiment analysis", value=True, help="Analyze responses for sentiment")
 
             if st.button("💾 Save Question", use_container_width=True, type="primary"):
                 if new_prompt.strip():
@@ -1089,14 +1093,16 @@ with tab_questions:
                                 help="Fixed options for demographics profile",
                             )
                         
-                        # Sentiment analysis toggle for all question types
-                        e_enable_sentiment = bool(q.get("enable_sentiment", True))
-                        e_enable_sentiment = st.checkbox(
-                            "Enable sentiment analysis for this question",
-                            value=e_enable_sentiment,
-                            key=f"es_{qid_str}",
-                            help="If checked, responses to this question will be analyzed for sentiment.",
-                        )
+                        # Sentiment analysis toggle - only for Short Answer and Paragraph
+                        e_enable_sentiment = False
+                        if e_type in ("Short Answer", "Paragraph"):
+                            e_enable_sentiment = bool(q.get("enable_sentiment", True))
+                            e_enable_sentiment = st.checkbox(
+                                "Enable sentiment analysis for this question",
+                                value=e_enable_sentiment,
+                                key=f"es_{qid_str}",
+                                help="If checked, responses to this question will be analyzed for sentiment.",
+                            )
                         
                         e_opts_raw = []
                         if e_type in ("Multiple Choice", "Multiple Select"):

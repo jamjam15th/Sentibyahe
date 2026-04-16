@@ -427,32 +427,16 @@ if selected_form:
         except:
             date_created = "Unknown"
 
-    # Responsive header section
-    st.markdown('<div style="height: 0.5rem"></div>', unsafe_allow_html=True)
+    # Mobile-friendly responsive header
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); 
+                border-left: 4px solid #ffc570; border-radius: 8px; padding: 0.8rem 1rem; margin-bottom: 0.8rem;">
+        <div style="font-size: 0.65rem; color: #7c8db5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;">Currently Analyzing</div>
+        <div style="font-size: 1rem; font-weight: 700; color: #1a2e55; margin-top: 0.3rem; word-break: break-word;">{form_title}</div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-    
-    with col1:
-        st.markdown(f"""
-        <div style="background: linear-gradient(135deg, rgba(255,197,112,0.1) 0%, rgba(255,197,112,0.05) 100%); 
-                    border-left: 4px solid #ffc570; border-radius: 8px; padding: 1rem 1.2rem;">
-            <div style="font-size: 0.72rem; color: #7c8db5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Currently Analyzing</div>
-            <div style="font-size: 1.1rem; font-weight: 700; color: #1a2e55; margin-top: 0.4rem; line-height: 1.3;">{form_title}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.metric("Created", date_created)
-    
-    with col3:
-        st.metric("Questions", question_count)
-    
-    with col4:
-        st.metric("Responses", response_count)
-    
-    st.markdown('<div style="height: 0.5rem"></div>', unsafe_allow_html=True)
-    
-    if st.button("✏️ Edit Form", use_container_width=False, help="Switch to Form Builder"):
+    if st.button("✏️ Edit Form", use_container_width=True, help="Switch to Form Builder"):
         st.switch_page("builder.py")
 
 st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
