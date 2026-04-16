@@ -248,37 +248,73 @@ with tab_single:
             st.warning("⚠️ Please enter some text to analyze.")
 
 with tab_batch:
-    st.info("Upload a CSV file with a column named **feedback** (one comment per row).")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    st.info("Upload a CSV or Excel file with a column named **feedback** (one comment per row).")
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
     
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        if 'feedback' in df.columns:
-            if st.button("Process Batch"):
-                with st.spinner(f"Analyzing {len(df)} rows..."):
-                    sentiments = []
-                    confidences = []
-                    for text in df["feedback"].astype(str):
-                        seq = _unwrap(classifier(text))
-                        top_res = max(seq, key=lambda x: x["score"])
-                        sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
-                        confidences.append(round(top_res["score"], 4))
-                    
-                    df['Sentiment'] = sentiments
-                    df['Confidence'] = confidences
-                    
-                st.success("✅ Batch processing complete!")
-                st.dataframe(df.head(10), use_container_width=True) # use_container_width for responsiveness
-                
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Annotated CSV",
-                    data=csv,
-                    file_name="sentiment_results.csv",
-                    mime="text/csv",
-                )
+        # Detect file type
+        is_csv = uploaded_file.type == "text/csv" or uploaded_file.name.endswith(".csv")
+        st.session_state.batch_is_csv = is_csv
+        
+        if is_csv:
+            df = pd.read_csv(uploaded_file)
         else:
-            st.error("⚠️ The uploaded CSV must contain a column named exactly 'feedback'.")
+            df = pd.read_excel(uploaded_file)
+        
+        if 'feedback' in df.columns:
+            # Show Process Batch button only if not yet processed
+            if "batch_df" not in st.session_state:
+                if st.button("Process Batch"):
+                    with st.spinner(f"Analyzing {len(df)} rows..."):
+                        sentiments = []
+                        confidences = []
+                        for text in df["feedback"].astype(str):
+                            seq = _unwrap(classifier(text))
+                            top_res = max(seq, key=lambda x: x["score"])
+                            sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
+                            confidences.append(round(top_res["score"], 4))
+                        
+                        df['Sentiment'] = sentiments
+                        df['Confidence'] = confidences
+                        st.session_state.batch_df = df
+                    
+                    st.success("✅ Batch processing complete!")
+                    st.rerun()
+            
+            # Show results and download button if processed
+            if "batch_df" in st.session_state:
+                df = st.session_state.batch_df
+                st.dataframe(df.head(10), use_container_width=True)
+                
+                is_csv = st.session_state.get("batch_is_csv", True)
+                
+                if is_csv:
+                    csv_data = df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Annotated",
+                        data=csv_data,
+                        file_name="sentiment_results.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    from io import BytesIO
+                    excel_buffer = BytesIO()
+                    df.to_excel(excel_buffer, index=False, engine='openpyxl')
+                    excel_data = excel_buffer.getvalue()
+                    st.download_button(
+                        label="📥 Download Annotated",
+                        data=excel_data,
+                        file_name="sentiment_results.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                
+                # Option to reset and upload new file
+                if st.button("📤 Upload Different File"):
+                    st.session_state.pop("batch_df", None)
+                    st.session_state.pop("batch_is_csv", None)
+                    st.rerun()
+        else:
+            st.error("⚠️ The uploaded file must contain a column named exactly 'feedback'.")
 
 
 with tab_compare:

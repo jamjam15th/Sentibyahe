@@ -395,15 +395,13 @@ except Exception:
         "reach_out_contact": "",
     }
 
-_meta_init_flag = f"_builder_meta_ss_{public_id}"
-if _meta_init_flag not in st.session_state:
-    st.session_state.meta_form_name = get_form(current_form_id, admin_email).get("title", "") or ""
-    st.session_state.meta_title = form_meta.get("title", "") or ""
-    st.session_state.meta_desc = form_meta.get("description", "") or ""
-    st.session_state.meta_reach_out = form_meta.get("reach_out_contact") or ""
-    st.session_state.meta_allow_multi = bool(form_meta.get("allow_multiple_responses", True))
-    st.session_state.meta_include_demo = bool(form_meta.get("include_demographics", False))
-    st.session_state[_meta_init_flag] = True
+# Always initialize form metadata - ensures values show even after tab switches
+st.session_state.meta_form_name = st.session_state.get("meta_form_name") or get_form(current_form_id, admin_email).get("title", "") or ""
+st.session_state.meta_title = st.session_state.get("meta_title") or form_meta.get("title", "") or ""
+st.session_state.meta_desc = st.session_state.get("meta_desc") or form_meta.get("description", "") or ""
+st.session_state.meta_reach_out = st.session_state.get("meta_reach_out") or form_meta.get("reach_out_contact") or ""
+st.session_state.meta_allow_multi = st.session_state.get("meta_allow_multi", bool(form_meta.get("allow_multiple_responses", True)))
+st.session_state.meta_include_demo = st.session_state.get("meta_include_demo", bool(form_meta.get("include_demographics", False)))
 
 def update_meta():
     payload = {
@@ -423,9 +421,10 @@ def update_meta():
         ),
     }
     try:
-        conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
+        result = conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
         st.session_state.pop("form_meta_migration_needed", None)
         st.session_state.pop("form_meta_reach_out_migration_needed", None)
+        return True
     except Exception as e:
         err = str(e)
         stripped = False
@@ -438,9 +437,15 @@ def update_meta():
             payload.pop("reach_out_contact", None)
             stripped = True
         if stripped:
-            conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
+            try:
+                conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
+                return True
+            except Exception as retry_e:
+                st.error(f"Failed to save settings: {retry_e}")
+                return False
         else:
-            raise
+            st.error(f"Failed to save settings: {e}")
+            return False
 
 st.markdown("""
 <div class="premium-header">
@@ -567,10 +572,11 @@ with tab_settings:
     
     with sc1:
         st.subheader("📋 Survey Copy")
-        st.text_input("Survey title", key="meta_title")
-        st.text_area("Description (optional)", key="meta_desc", height=80, placeholder="A few words about what you're asking")
+        st.text_input("Survey title", value=st.session_state.get("meta_title", ""), key="meta_title")
+        st.text_area("Description (optional)", value=st.session_state.get("meta_desc", ""), key="meta_desc", height=80, placeholder="A few words about what you're asking")
         st.text_area(
             "Reach out / Contact",
+            value=st.session_state.get("meta_reach_out", ""),
             key="meta_reach_out",
             height=80,
             placeholder="e.g. Email: research@school.edu · Office: Room 204\n\n(shown on thank-you screen)",
@@ -593,10 +599,13 @@ with tab_settings:
         st.divider()
         
         if st.button("💾 Save All Settings", type="primary", use_container_width=True):
-            update_meta()
-            refresh_form_list(admin_email)
-            st.session_state._show_meta_saved = True
-            st.rerun()
+            success = update_meta()
+            if success:
+                refresh_form_list(admin_email)
+                st.success("✅ Settings saved successfully!")
+                st.rerun()
+            else:
+                st.error("❌ Failed to save settings. Please try again.")
     
     with sc2:
         st.subheader("🔗 Share & Preview")
@@ -681,9 +690,30 @@ with tab_questions:
             new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
 
             if q_type in ("Multiple Choice", "Multiple Select"):
-                opts_raw = st.text_input("Options (comma-separated)", placeholder="e.g. Mabuti, Okay, Masama", label_visibility="collapsed")
-                if opts_raw:
-                    new_options = [o.strip() for o in opts_raw.split(",") if o.strip()]
+                st.markdown("**Options**")
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    opt_input = st.text_input("Add option", placeholder="e.g. Mabuti", label_visibility="collapsed", key="opt_input")
+                with col2:
+                    if st.button("➕ Add", key="add_opt"):
+                        if opt_input.strip():
+                            if "new_options_list" not in st.session_state:
+                                st.session_state.new_options_list = []
+                            st.session_state.new_options_list.append(opt_input.strip())
+                            st.rerun()
+                
+                # Display and manage options
+                if "new_options_list" in st.session_state and st.session_state.new_options_list:
+                    st.markdown("**Current options:**")
+                    for i, opt in enumerate(st.session_state.new_options_list):
+                        opt_col1, opt_col2 = st.columns([4, 1])
+                        with opt_col1:
+                            st.write(f"✓ {opt}")
+                        with opt_col2:
+                            if st.button("✕", key=f"del_opt_{i}"):
+                                st.session_state.new_options_list.pop(i)
+                                st.rerun()
+                    new_options = st.session_state.new_options_list
 
             if q_type == "Rating (Likert)":
                 st.markdown("**Scale Settings**")
@@ -700,21 +730,17 @@ with tab_questions:
             with opt1:
                 is_required = st.checkbox("Required", value=True)
             with opt2:
-                is_demographic_q = st.checkbox("Demographic", value=False, help="Fixed options for profiles")
+                is_demographic_q = False
+                if q_type in ("Multiple Choice", "Multiple Select") and servqual_dim is None:
+                    is_demographic_q = st.checkbox("Mark as demographic", value=False, help="Fixed options for demographics profile")
             with opt3:
                 enable_sentiment = True
                 if q_type in ("Short Answer", "Paragraph"):
                     enable_sentiment = st.checkbox("Analyze sentiment", value=True)
 
-            if is_demographic_q and not demographic_qtype_ok(q_type):
-                st.warning("Demographics need **Multiple Choice** or **Multiple Select** — not free text or Likert.")
-
             if st.button("💾 Save Question", use_container_width=True, type="primary"):
                 if new_prompt.strip():
-                    if is_demographic_q and not demographic_qtype_ok(q_type):
-                        st.session_state["_show_demo_type_dialog"] = True
-                        st.rerun()
-                    elif q_type in ("Multiple Choice", "Multiple Select") and not new_options:
+                    if q_type in ("Multiple Choice", "Multiple Select") and not new_options:
                         st.warning("Add at least one option for this question type.")
                     elif q_type == "Multiple Select" and len(new_options) < 2:
                         st.warning("Multiple select works best with 2+ options.")
@@ -737,6 +763,8 @@ with tab_questions:
                             payload["scale_label_high"] = new_scale_label_high.strip() or None
                         conn.client.table("form_questions").insert(payload).execute()
                         st.success("✅ Question added!")
+                        if "new_options_list" in st.session_state:
+                            del st.session_state.new_options_list
                         st.rerun()
                 else:
                     st.warning("⚠️ Enter question text first.")
@@ -1052,16 +1080,15 @@ with tab_questions:
                             e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
 
                         e_req = st.checkbox("Required", value=bool(q.get("is_required")), key=f"er_{qid_str}")
-                        e_demo = st.checkbox(
-                            "Mark as demographic",
-                            value=bool(q.get("is_demographic")),
-                            key=f"edemo_{qid_str}",
-                            help="Only Multiple Choice or Multiple Select (fixed options for donut charts). Not for free text or Likert.",
-                        )
-                        if e_demo and not demographic_qtype_ok(e_type):
-                            st.warning(
-                                "**Demographics** charts need **Multiple Choice** or **Multiple Select**. "
-                                "Change the type above, or turn this off."
+                        
+                        # Mark as demographic - only show if Multiple Choice/Select and None dimension
+                        e_demo = False
+                        if e_type in ("Multiple Choice", "Multiple Select") and e_dim == "None":
+                            e_demo = st.checkbox(
+                                "Mark as demographic",
+                                value=bool(q.get("is_demographic")),
+                                key=f"edemo_{qid_str}",
+                                help="Fixed options for demographics profile",
                             )
                         
                         # Sentiment analysis toggle for text questions
@@ -1073,9 +1100,36 @@ with tab_questions:
                                 key=f"es_{qid_str}",
                                 help="If unchecked, this question will not be analyzed for sentiment.",
                             )
-                        e_opts_raw = ""
+                        
+                        e_opts_raw = []
                         if e_type in ("Multiple Choice", "Multiple Select"):
-                            e_opts_raw = st.text_input("Options (comma-separated)", value=", ".join(q.get("options") or []), key=f"eo_{qid_str}")
+                            st.markdown("**Options**")
+                            # Initialize options list from existing options
+                            edit_key = f"edit_opts_{qid_str}"
+                            if edit_key not in st.session_state:
+                                st.session_state[edit_key] = list(q.get("options") or [])
+                            
+                            col1, col2 = st.columns([4, 1])
+                            with col1:
+                                opt_input = st.text_input("Add option", placeholder="e.g. Mabuti", label_visibility="collapsed", key=f"edit_opt_input_{qid_str}")
+                            with col2:
+                                if st.button("➕ Add", key=f"add_edit_opt_{qid_str}"):
+                                    if opt_input.strip():
+                                        st.session_state[edit_key].append(opt_input.strip())
+                                        st.rerun()
+                            
+                            # Display and manage options
+                            if st.session_state[edit_key]:
+                                st.markdown("**Current options:**")
+                                for i, opt in enumerate(st.session_state[edit_key]):
+                                    opt_col1, opt_col2 = st.columns([4, 1])
+                                    with opt_col1:
+                                        st.write(f"✓ {opt}")
+                                    with opt_col2:
+                                        if st.button("✕", key=f"del_edit_opt_{qid_str}_{i}"):
+                                            st.session_state[edit_key].pop(i)
+                                            st.rerun()
+                            e_opts_raw = st.session_state[edit_key]
 
                         e_scale_max        = q.get("scale_max") or 5
                         e_scale_label_low  = q.get("scale_label_low")  or ""
@@ -1094,30 +1148,28 @@ with tab_questions:
                         sv_col, cn_col = st.columns(2)
                         with sv_col:
                             if st.button("💾 Save changes", key=f"save_{qid_str}"):
-                                if e_demo and not demographic_qtype_ok(e_type):
-                                    st.session_state["_show_demo_type_dialog"] = True
-                                    st.rerun()
+                                update_payload = {
+                                    "prompt":             e_prompt.strip(),
+                                    "q_type":             e_type,
+                                    "options":            e_opts_raw if isinstance(e_opts_raw, list) else [o.strip() for o in e_opts_raw.split(",") if o.strip()],
+                                    "is_required":        e_req,
+                                    "is_demographic":     bool(e_demo),
+                                    "enable_sentiment":   bool(e_enable_sentiment),
+                                    "servqual_dimension": None if e_dim == "None" else e_dim,
+                                }
+                                if e_type == "Rating (Likert)":
+                                    update_payload["scale_max"]        = int(e_scale_max)
+                                    update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
+                                    update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
                                 else:
-                                    update_payload = {
-                                        "prompt":             e_prompt.strip(),
-                                        "q_type":             e_type,
-                                        "options":            [o.strip() for o in e_opts_raw.split(",") if o.strip()] if e_opts_raw else [],
-                                        "is_required":        e_req,
-                                        "is_demographic":     bool(e_demo),
-                                        "enable_sentiment":   bool(e_enable_sentiment),
-                                        "servqual_dimension": None if e_dim == "None" else e_dim,
-                                    }
-                                    if e_type == "Rating (Likert)":
-                                        update_payload["scale_max"]        = int(e_scale_max)
-                                        update_payload["scale_label_low"]  = e_scale_label_low.strip() if e_scale_label_low else None
-                                        update_payload["scale_label_high"] = e_scale_label_high.strip() if e_scale_label_high else None
-                                    else:
-                                        update_payload["scale_max"]        = None
-                                        update_payload["scale_label_low"]  = None
-                                        update_payload["scale_label_high"] = None
-                                    update_question(q["id"], update_payload)
-                                    st.session_state.editing_id = None
-                                    st.rerun()
+                                    update_payload["scale_max"]        = None
+                                    update_payload["scale_label_low"]  = None
+                                    update_payload["scale_label_high"] = None
+                                update_question(q["id"], update_payload)
+                                if f"edit_opts_{qid_str}" in st.session_state:
+                                    del st.session_state[f"edit_opts_{qid_str}"]
+                                st.session_state.editing_id = None
+                                st.rerun()
                         with cn_col:
                             if st.button("✕ Cancel", key=f"cancel_{qid_str}"):
                                 st.session_state.editing_id = None
