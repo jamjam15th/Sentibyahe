@@ -515,7 +515,7 @@ def analyze_per_question_sentiments(rows: list[dict]):
             pass
 
 # ══════════════════════════════════════════
-# STATIC HEADER
+# STATIC HEADER WITH BACK BUTTON
 # ══════════════════════════════════════════
 st.markdown("""
 <div class="dash-header">
@@ -527,52 +527,21 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════
-# MANDATORY FORM SELECTION
-# ══════════════════════════════════════════
-st.markdown("### 📋 Select a Form to View Analytics")
+btn_col1, btn_col2, btn_col3 = st.columns([0.15, 0.7, 0.15])
+with btn_col1:
+    if st.button("← Back", use_container_width=True):
+        st.switch_page("builder.py")
 
-available_forms = st.session_state.get("available_forms", [])
-if not available_forms:
-    st.warning("No forms found.")
-    if st.button("📝 Go to Form Builder", use_container_width=True):
-        st.switch_page("pages/builder.py")
-    st.stop()
-
-# Create form dropdown
-form_options = {form['title']: form['form_id'] for form in available_forms}
-form_labels = list(form_options.keys())
-
-# Find the currently selected form label
-current_label = None
-for form in available_forms:
-    if form['form_id'] == current_form_id:
-        current_label = form['title']
-        break
-
-selected_form_label = st.selectbox(
-    "Choose a form:",
-    form_labels,
-    index=form_labels.index(current_label) if current_label in form_labels else 0,
-    key="form_selector"
-)
-
-# Update selected form if changed
-selected_form_id = form_options[selected_form_label]
-if selected_form_id != current_form_id:
-    set_current_form(selected_form_id)
-    st.rerun()
-
-st.markdown("<div style='margin:2rem 0; border-bottom:2px solid #e0e0e0'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin:0.5rem 0'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
-# ANALYTICS DASHBOARD (only show after form selection)
+# ANALYTICS DASHBOARD
 # ══════════════════════════════════════════
 available_forms = st.session_state.get("available_forms", [])
 form_is_selected = current_form_id and len([f for f in available_forms if f["form_id"] == current_form_id]) > 0
 
 if not form_is_selected:
-    st.info("👆 **Select a form above to view analytics.**")
+    st.info("No form data available. Please create and select a form in the Form Builder.")
     st.stop()
 
 # Get the selected form details
@@ -599,7 +568,7 @@ if selected_form:
             date_created = "Unknown"
 
     # Mobile-friendly responsive header
-    col1, col2 = st.columns([1, 0.08])
+    col1 = st.columns(1)[0]
     with col1:
         st.markdown(f"""
         <div style="background: rgba(26,50,99,0.03); border: 1px solid rgba(26,50,99,0.1); border-radius: 8px; padding: 0.75rem 1rem;">
@@ -607,10 +576,6 @@ if selected_form:
             <div style="font-size: 1.1rem; font-weight: 700; color: #1a2e55; margin-top: 0.25rem;">{form_title}</div>
         </div>
         """, unsafe_allow_html=True)
-    with col2:
-        st.markdown('<div style="padding-top: 0.75rem;"></div>', unsafe_allow_html=True)
-        if st.button("✏️", help="Edit Form", key="edit_form_btn"):
-            st.switch_page("builder.py")
 
 st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
 
@@ -1254,7 +1219,7 @@ def render_dashboard():
                 "moderate": "Mixed scores suggest that conditions are acceptable but inconsistent. Respondents might be experiencing modern units and smooth apps on some routes, while dealing with dilapidated vehicles or app glitches on others.",
                 "weak": "Negative sentiment often points to physical or digital deterioration. Respondents are likely highlighting uncomfortable rides, dilapidated jeepneys/buses, inadequate waiting sheds, or glitchy booking apps.",
                 "action_strong": "Review the specific Tangibles questions in the Quantitative tab to identify exactly which upgrades (e.g., vehicle condition vs. terminal cleanliness) received the highest Likert ratings, and use them as benchmarks.",
-                "action_moderate": "Check the Top and Bottom Questions chart to separate the acceptable facilities from the lower-scoring ones. Targeted maintenance on the specific items with low scores can easily lift this dimension's average.",
+                "action_moderate": "Check the Likert Response Log chart to separate the acceptable facilities from the lower-scoring ones. Targeted maintenance on the specific items with low scores can easily lift this dimension's average.",
                 "action_weak": "Prioritize a review of physical infrastructure. Look at the Quantitative breakdown to pinpoint whether the lowest Likert scores belong to the vehicles themselves, terminal facilities, or app usability.",
             }
         ),
@@ -1540,9 +1505,9 @@ def render_dashboard():
                         return "weak"
 
                 tier_config = {
-                    "strong":   ("✅", "Strong",          "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
+                    "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
                     "moderate": ("🔶", "Needs monitoring", "#8b6914", "rgba(255,197,112,0.10)", "rgba(255,197,112,0.35)"),
-                    "weak":     ("🚨", "Needs attention",  "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
+                    "weak":     ("🚨", "Needs attention (Negative)",  "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
                 }
 
                 all_scores = list(dim_means.values())
@@ -1661,7 +1626,7 @@ def render_dashboard():
                         <span style="font-size:.65rem;font-weight:700;background:rgba(176,58,46,0.12);color:#b03a2e;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🚨 Urgent</span>
                         <div>
                             <div style="font-size:.78rem;font-weight:700;color:#b03a2e;margin-bottom:2px;">{names}</div>
-                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps. Check the <strong>Quantitative Tab (Top and Bottom Questions)</strong> to pinpoint exactly which Likert metric is pulling the dimension down before planning remediation.</div>
+                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps. Check the <strong>Quantitative Tab (Likert Response Log)</strong> to pinpoint exactly which Likert metric is pulling the dimension down before planning remediation.</div>
                         </div>
                         </div>"""
 
@@ -1861,10 +1826,10 @@ def render_dashboard():
                 else: return "weak"
 
             tier_labels = {
-                "strong":   ("✅", "Strong",          "#4a7c59", "rgba(74,124,89,0.08)",   "#4a7c59"),
+                "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "#4a7c59"),
                 "moderate": ("🙂", "Mixed",            "#8b7a2e", "rgba(139,157,195,0.08)", "#8b9dc3"),
                 "neutral":  ("😐", "Neutral",          "#8b9dc3", "rgba(139,157,195,0.08)", "#8b9dc3"),
-                "weak":     ("⚠️", "Needs attention", "#b03a2e", "rgba(176,58,46,0.08)",  "#b03a2e"),
+                "weak":     ("⚠️", "Needs attention (Negative)", "#b03a2e", "rgba(176,58,46,0.08)",  "#b03a2e"),
             }
 
             dim_order = ["Tangibles", "Reliability", "Responsiveness", "Assurance", "Empathy"]
@@ -2657,8 +2622,6 @@ def render_dashboard():
                 likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
                 likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
 
-                st.markdown('<div class="section-head">Top and Bottom Questions</div>', unsafe_allow_html=True)
-                st.caption("`Bottom` = lowest-rated questions based on average score. These highlight areas that may need improvement first.")
                 q_avg = (
                     likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
                     .mean()

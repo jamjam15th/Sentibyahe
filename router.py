@@ -249,6 +249,7 @@ login_page       = st.Page("login.py",              title="Log in",             
 dashboard_page   = st.Page("dashboard.py",          title="Sentiment Dashboard", icon="📊")
 builder_page     = st.Page("builder.py",            title="Form Builder",        icon="🛠️")
 testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
+servqual_page    = st.Page("servqual_info.py",      title="SERVQUAL Info",       icon="ℹ️")
 settings_page    = st.Page("settings.py",           title="Settings",            icon="⚙️")
 public_form_page = st.Page("public_form.py",        title="Take Survey",         icon="📋")
 
@@ -260,7 +261,7 @@ if "form_id" in st.query_params:
 
 elif st.session_state.get("logged_in", False):
     pg = st.navigation(
-        [dashboard_page, builder_page, testing_page, settings_page, public_form_page],
+        [dashboard_page, builder_page, testing_page, servqual_page, settings_page, public_form_page],
         position="sidebar"
     )
 
@@ -283,9 +284,9 @@ elif st.session_state.get("logged_in", False):
         """)
 
         st.html('<span class="sidebar-nav-label">Navigation</span>')
-        st.page_link(dashboard_page)
         st.page_link(testing_page)
         st.page_link(builder_page)
+        st.page_link(servqual_page)
         st.page_link(settings_page)
 
         st.divider()

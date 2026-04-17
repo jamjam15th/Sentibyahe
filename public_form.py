@@ -379,7 +379,6 @@ if allow_multiple_responses and st.session_state.get(just_submitted_key):
     _render_reach_out_contact()
     if st.button("Submit another response", type="secondary", key=f"submit_again_{target_form_id}"):
         st.session_state[just_submitted_key] = False
-        st.session_state[form_ready_key] = False
         st.rerun()
 elif (not allow_multiple_responses) and (
     locked_one_response or st.session_state.get(submitted_key)
