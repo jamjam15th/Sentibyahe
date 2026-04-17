@@ -628,12 +628,11 @@ if not viewing_editor:
         st.stop()
 
     # Header for form gallery
-    st.markdown("### ➕ Start a new form")
+    st.markdown("### Start A New Form")
     if st.button("➕ Blank Form", use_container_width=True, type="primary"):
         st.session_state._show_create_form = True
     
     st.markdown("---")
-    st.markdown("### 📋 Your Recent Forms")
     
     # Initialize menu state for forms and selected forms for bulk delete
     if "form_menu_open" not in st.session_state:
@@ -641,40 +640,40 @@ if not viewing_editor:
     if "_selected_gallery_forms" not in st.session_state:
         st.session_state._selected_gallery_forms = set()
     
-    # Bulk selection toolbar
-    h1, h2 = st.columns([2, 1])
-    with h1:
-        st.markdown("")
-    with h2:
+    # Header on the left, Bulk selection on the right
+    # Using vertical_alignment="bottom" (Streamlit 1.35+) to make the header perfectly level with the button
+    toolbar_left, toolbar_right = st.columns([4, 1.5], vertical_alignment="bottom")
+    
+    with toolbar_left:
+        # Moved the header inside the left column
+        st.markdown("### 📋 Your Recent Forms")
+        
+    with toolbar_right:
         n_selected = len(st.session_state._selected_gallery_forms)
-        st.markdown(f"<div style='text-align:right;'><span style='font-weight:700; color:#3b5bdb;'>{n_selected}</span> selected</div>", unsafe_allow_html=True)
-    
-    # Select All and bulk delete buttons
-    tb1, tb2, tb3 = st.columns([1.8, 1.5, 1.7])
-    
-    with tb1:
+        
+        # 1. Selection count (Top)
+        st.markdown(f"<div style='text-align:right; margin-bottom: 8px;'><span style='font-weight:700; color:#3b5bdb;'>{n_selected}</span> selected</div>", unsafe_allow_html=True)
+        
+        # 2. Select / Deselect All Button (Middle)
         all_checked = len(st.session_state._selected_gallery_forms) == len(available_forms) and len(available_forms) > 0
         if st.button("☑ Select All" if not all_checked else "☐ Deselect All", use_container_width=True):
             if not all_checked:
-                # Select all forms and sync checkbox states
                 for form in available_forms:
                     st.session_state._selected_gallery_forms.add(form["form_id"])
                     st.session_state[f"gallery_chk_{form['form_id']}"] = True
             else:
-                # Deselect all forms and sync checkbox states
                 for form in available_forms:
                     st.session_state._selected_gallery_forms.discard(form["form_id"])
                     st.session_state[f"gallery_chk_{form['form_id']}"] = False
             st.rerun()
-    
-    with tb2:
+            
+        # 3. Delete Button (Appears Below when items are selected)
         if n_selected > 0:
             if st.button(f"🗑️ Delete ({n_selected})", use_container_width=True, type="primary"):
                 st.session_state._confirm_delete_multiple_forms = list(st.session_state._selected_gallery_forms)
-    
-    with tb3:
-        st.markdown("")
-    
+                st.rerun()
+
+    st.markdown("<div style='margin-bottom: 1rem;'></div>", unsafe_allow_html=True)
     st.markdown("")
     
     # Form gallery - one per row (inline)

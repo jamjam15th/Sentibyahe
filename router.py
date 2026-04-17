@@ -248,7 +248,7 @@ except Exception:
 login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
 dashboard_page   = st.Page("dashboard.py",          title="Sentiment Dashboard", icon="📊")
 builder_page     = st.Page("builder.py",            title="Form Builder",        icon="🛠️")
-testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
+# testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
 servqual_page    = st.Page("servqual_info.py",      title="SERVQUAL Info",       icon="ℹ️")
 settings_page    = st.Page("settings.py",           title="Settings",            icon="⚙️")
 public_form_page = st.Page("public_form.py",        title="Take Survey",         icon="📋")
@@ -261,15 +261,17 @@ if "form_id" in st.query_params:
 
 elif st.session_state.get("logged_in", False):
     pg = st.navigation(
-        [dashboard_page, builder_page, testing_page, servqual_page, settings_page, public_form_page],
+        [dashboard_page, builder_page, servqual_page, settings_page, public_form_page],
         position="sidebar"
     )
 
     with st.sidebar:
         st.html("""
         <div class="sidebar-brand">
-          <div class="brand-badge"><span>🚌 Land public transportation</span></div>
-          <h2>Sentiment<br><em>Analysis</em> Platform</h2>
+          <h2 style="margin-bottom: 5px;">🚐 Sentibyahe</h2>
+          <p style="font-size: 0.85rem; color: #7c8db5; margin-top: 0; font-style: italic;">
+            AI-Powered Sentiment Surveys
+          </p>
         </div>
         """)
 
@@ -284,7 +286,7 @@ elif st.session_state.get("logged_in", False):
         """)
 
         st.html('<span class="sidebar-nav-label">Navigation</span>')
-        st.page_link(testing_page)
+        # st.page_link(testing_page)
         st.page_link(builder_page)
         st.page_link(servqual_page)
         st.page_link(settings_page)
@@ -294,12 +296,6 @@ elif st.session_state.get("logged_in", False):
         if st.button("🚪 Logout", use_container_width=True):
             clear_session()
             st.rerun()
-
-        st.html("""
-        <div class="sidebar-footer">
-          <span class="ver">LPT sentiment v1.0</span>
-        </div>
-        """)
 
 else:
     # Hide sidebar for logged-out users on the login screen
