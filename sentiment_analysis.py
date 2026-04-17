@@ -166,8 +166,7 @@ def load_comparison_pipeline(model_id: str):
     return transformers.pipeline("sentiment-analysis", model=model_id, device=-1)
 
 
-with st.spinner(f"Loading {OUR_MODEL_DISPLAY_NAME}…"):
-    classifier = load_sentiment_model()
+classifier = load_sentiment_model()
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
@@ -207,14 +206,16 @@ with tab_single:
     
     if st.button("🚀 Analyze Sentiment"):
         if user_input.strip():
-            results = _unwrap(classifier(user_input.strip()))
-            scores_dict = {
-                label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
-                for res in results
-            }
+            with st.status("🔄 Analyzing...", expanded=False):
+                # 🧠 Brain 1: Sentiment Analysis
+                results = _unwrap(classifier(user_input.strip()))
+                scores_dict = {
+                    label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
+                    for res in results
+                }
 
-            top_sentiment = max(scores_dict, key=scores_dict.get)
-            top_score = scores_dict[top_sentiment]
+                top_sentiment = max(scores_dict, key=scores_dict.get)
+                top_score = scores_dict[top_sentiment]
             
             st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
             
@@ -265,18 +266,19 @@ with tab_batch:
             # Show Process Batch button only if not yet processed
             if "batch_df" not in st.session_state:
                 if st.button("Process Batch"):
-                    with st.spinner(f"Analyzing {len(df)} rows..."):
-                        sentiments = []
-                        confidences = []
-                        for text in df["feedback"].astype(str):
-                            seq = _unwrap(classifier(text))
-                            top_res = max(seq, key=lambda x: x["score"])
-                            sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
-                            confidences.append(round(top_res["score"], 4))
-                        
-                        df['Sentiment'] = sentiments
-                        df['Confidence'] = confidences
-                        st.session_state.batch_df = df
+                    sentiments = []
+                    confidences = []
+                    
+                    for text in df["feedback"].astype(str):
+                        # 🧠 Brain 1: Sentiment Analysis
+                        seq = _unwrap(classifier(text))
+                        top_res = max(seq, key=lambda x: x["score"])
+                        sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
+                        confidences.append(round(top_res["score"], 4))
+                    
+                    df['Sentiment'] = sentiments
+                    df['Sentiment Confidence'] = confidences
+                    st.session_state.batch_df = df
                     
                     st.success("✅ Batch processing complete!")
                     st.rerun()
@@ -293,7 +295,7 @@ with tab_batch:
                     st.download_button(
                         label="📥 Download Annotated",
                         data=csv_data,
-                        file_name="sentiment_results.csv",
+                        file_name="sentiment_dimension_results.csv",
                         mime="text/csv",
                     )
                 else:
@@ -304,7 +306,7 @@ with tab_batch:
                     st.download_button(
                         label="📥 Download Annotated",
                         data=excel_data,
-                        file_name="sentiment_results.xlsx",
+                        file_name="sentiment_dimension_results.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
                 
@@ -371,57 +373,56 @@ with tab_compare:
             st.subheader(f"📊 Analyzing {len(df)} feedback comments...")
             
             if st.button("🔍 Run Comparison", type="primary", key="run_comparison"):
-                with st.spinner("Running our model and selected baseline (this may take a minute)..."):
-                    from transformers import pipeline as hf_pipeline
-                    
-                    # Create a fresh dataframe with ONLY feedback column (ensures no old predictions)
-                    fresh_df = df[["feedback"]].copy()
-                    
-                    # Run OUR model
-                    our_predictions = []
-                    our_confidences = []
+                from transformers import pipeline as hf_pipeline
+                
+                # Create a fresh dataframe with ONLY feedback column (ensures no old predictions)
+                fresh_df = df[["feedback"]].copy()
+                
+                # Run OUR model
+                our_predictions = []
+                our_confidences = []
+                
+                for text in fresh_df["feedback"].astype(str):
+                    seq = _unwrap(classifier(text))
+                    top_res = max(seq, key=lambda x: x["score"])
+                    our_predictions.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
+                    our_confidences.append(round(top_res["score"], 4))
+                
+                fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Prediction"] = our_predictions
+                fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Confidence"] = our_confidences
+                
+                # Run SELECTED baseline model
+                baseline_name = selected_model["user_label"].split(" — ")[0]
+                model_id = selected_model["model_id"]
+                kind = selected_model["kind"]
+                
+                try:
+                    baseline_pipe = hf_pipeline("sentiment-analysis", model=model_id)
+                    baseline_preds = []
+                    baseline_confs = []
                     
                     for text in fresh_df["feedback"].astype(str):
-                        seq = _unwrap(classifier(text))
-                        top_res = max(seq, key=lambda x: x["score"])
-                        our_predictions.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
-                        our_confidences.append(round(top_res["score"], 4))
+                        try:
+                            res = baseline_pipe(text[:512])[0]
+                            sent, conf = normalize_comparison_prediction(kind, res)
+                            baseline_preds.append(sent)
+                            baseline_confs.append(round(conf, 4))
+                        except:
+                            baseline_preds.append("NEUTRAL")
+                            baseline_confs.append(0.0)
                     
-                    fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Prediction"] = our_predictions
-                    fresh_df[f"{OUR_MODEL_DISPLAY_NAME} Confidence"] = our_confidences
+                    fresh_df[f"{baseline_name} Prediction"] = baseline_preds
+                    fresh_df[f"{baseline_name} Confidence"] = baseline_confs
                     
-                    # Run SELECTED baseline model
-                    baseline_name = selected_model["user_label"].split(" — ")[0]
-                    model_id = selected_model["model_id"]
-                    kind = selected_model["kind"]
-                    
-                    try:
-                        baseline_pipe = hf_pipeline("sentiment-analysis", model=model_id)
-                        baseline_preds = []
-                        baseline_confs = []
-                        
-                        for text in fresh_df["feedback"].astype(str):
-                            try:
-                                res = baseline_pipe(text[:512])[0]
-                                sent, conf = normalize_comparison_prediction(kind, res)
-                                baseline_preds.append(sent)
-                                baseline_confs.append(round(conf, 4))
-                            except:
-                                baseline_preds.append("NEUTRAL")
-                                baseline_confs.append(0.0)
-                        
-                        fresh_df[f"{baseline_name} Prediction"] = baseline_preds
-                        fresh_df[f"{baseline_name} Confidence"] = baseline_confs
-                        
-                    except Exception as e:
-                        st.error(f"Could not load model: {e}")
-                        st.stop()
-                    
-                    st.session_state.comparison_df = fresh_df
-                    st.session_state.comparison_baseline = baseline_name
-                    st.session_state.comparison_our_model = OUR_MODEL_DISPLAY_NAME
-                    st.success("✅ Comparison complete!")
-                    st.rerun()
+                except Exception as e:
+                    st.error(f"Could not load model: {e}")
+                    st.stop()
+                
+                st.session_state.comparison_df = fresh_df
+                st.session_state.comparison_baseline = baseline_name
+                st.session_state.comparison_our_model = OUR_MODEL_DISPLAY_NAME
+                st.success("✅ Comparison complete!")
+                st.rerun()
             
             if "comparison_df" in st.session_state:
                 df_results = st.session_state.comparison_df

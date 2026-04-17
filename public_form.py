@@ -1,6 +1,7 @@
 import hashlib
 import html
 import uuid
+import re
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
 from streamlit_extras.stylable_container import stylable_container
@@ -180,6 +181,25 @@ st.markdown("""
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
+# ── CACHED QUERY HELPERS ──
+@st.cache_data
+def _fetch_form_meta(form_id: str):
+    """Cache form metadata by form_id (public access)."""
+    meta_res = conn.client.table("form_meta").select("*").eq("form_id", form_id).limit(1).execute()
+    return meta_res.data[0] if meta_res.data else None
+
+@st.cache_data
+def _fetch_form_meta_by_email(form_id: str, admin_email: str):
+    """Cache form metadata by form_id and admin_email (preview mode)."""
+    meta_res = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).eq("form_id", form_id).execute()
+    return meta_res.data[0] if meta_res.data else None
+
+@st.cache_data
+def _fetch_form_questions(form_id: str, admin_email: str):
+    """Cache form questions."""
+    q_res = conn.client.table("form_questions").select("*").eq("admin_email", admin_email).eq("form_id", form_id).order("sort_order").execute()
+    return q_res.data or []
+
 # ── 1. FETCH LOGIC ──
 is_preview = False
 target_form_id = None
@@ -204,27 +224,26 @@ try:
     # For public access, we need to get the form and owner_email from form_meta using form_id
     if not is_preview:
         # Public access: look up form_id in form_meta to find owner_email
-        meta_res = conn.client.table("form_meta").select("*").eq("form_id", target_form_id).limit(1).execute()
-        if meta_res.data:
-            owner_email = meta_res.data[0].get("admin_email")
-            form_meta = meta_res.data[0]
+        form_meta = _fetch_form_meta(target_form_id)
+        if form_meta:
+            owner_email = form_meta.get("admin_email")
         else:
             st.error("⚠️ Survey not found.")
             st.stop()
     else:
         # Preview mode: query using owner_email
-        meta_res = conn.client.table("form_meta").select("*").eq("admin_email", owner_email).eq("form_id", target_form_id).execute()
-        form_meta = meta_res.data[0] if meta_res.data else {
-            "title": "Land public transportation survey",
-            "description": "",
-            "include_demographics": False,
-            "allow_multiple_responses": True,
-            "reach_out_contact": "",
-        }
+        form_meta = _fetch_form_meta_by_email(target_form_id, owner_email)
+        if not form_meta:
+            form_meta = {
+                "title": "Land public transportation survey",
+                "description": "",
+                "include_demographics": False,
+                "allow_multiple_responses": True,
+                "reach_out_contact": "",
+            }
     
     # Get questions using form_id and owner_email
-    q_res = conn.client.table("form_questions").select("*").eq("admin_email", owner_email).eq("form_id", target_form_id).order("sort_order").execute()
-    custom_questions = q_res.data or []
+    custom_questions = _fetch_form_questions(target_form_id, owner_email)
 except Exception as e:
     st.error(f"⚠️ Could not load survey: {str(e)}")
     st.stop()
@@ -284,7 +303,7 @@ STANDARD_DEMO_QUESTIONS = [
     {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
     {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
     {
-        "prompt": "Which land public transportation modes do you usually use? (Select all that apply)",
+        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
         "q_type": "Multiple Select",
         "options": LPT_TRANSPORT_MODE_OPTIONS,
         "is_required": True,
@@ -302,33 +321,40 @@ form_schema.extend(custom_questions)
 allow_multiple_responses = form_meta.get("allow_multiple_responses", True)
 
 
+def _make_clickable(text: str) -> str:
+    """Convert email addresses and URLs to clickable links."""
+    # Email pattern
+    email_pattern = r'\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b'
+    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color:#2f4fd1;text-decoration:underline;">\1</a>', text)
+    
+    # URL pattern (http, https, www)
+    url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
+    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color:#2f4fd1;text-decoration:underline;">\1</a>', text)
+    
+    return text
+
 def _render_reach_out_contact():
     txt = (form_meta.get("reach_out_contact") or "").strip()
     if not txt:
         return
+    # First escape HTML, then make emails/URLs clickable
     safe = html.escape(txt)
+    clickable = _make_clickable(safe)
     st.markdown(
         f"""
         <div style="margin-top:1rem;padding:12px 14px;border-radius:8px;background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.12);">
           <div style="font-size:.7rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">How to reach us</div>
-          <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;">{safe}</div>
+          <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;word-break:break-word;">{clickable}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 submitted_key = f"submitted_once_{target_form_id}"
 just_submitted_key = f"just_submitted_{target_form_id}"
-form_ready_key = f"form_ready_{target_form_id}"
 if submitted_key not in st.session_state:
     st.session_state[submitted_key] = False
 if just_submitted_key not in st.session_state:
     st.session_state[just_submitted_key] = False
-if form_ready_key not in st.session_state:
-    st.session_state[form_ready_key] = False
-
-if not st.session_state[form_ready_key]:
-    st.session_state[form_ready_key] = True
-    st.rerun()
 
 # ── 3. HEADER ──
 st.markdown(f"""
@@ -437,27 +463,43 @@ elif len(form_schema) > 0:
                     scale_max = int(q.get("scale_max") or 5)
                     lbl_low  = q.get("scale_label_low", "")
                     lbl_high = q.get("scale_label_high", "")
-                    ans_likert = st.radio(
-                        prompt,
-                        [str(x) for x in range(1, scale_max + 1)],
-                        key=key,
-                        index=None,
-                        horizontal=True,
-                        label_visibility="collapsed",
-                    )
-                    user_answers[unique_prompt] = ans_likert
+                    
                     if lbl_low or lbl_high:
-                        lbl_cols = st.columns(scale_max)
+                        # Create 3-column layout: label | buttons | label
+                        lbl_cols = st.columns([1, 3, 1], gap="small")
+                        
                         with lbl_cols[0]:
                             st.markdown(
-                                f"<div style='font-size:11px;color:#7c8db5;font-weight:600;text-align:left;line-height:1.2;'>{lbl_low}</div>",
+                                f"<div style='font-size:12px;color:#7c8db5;font-weight:600;text-align:center;line-height:1.3;padding-top:12px;white-space:nowrap;'>{lbl_low}</div>",
                                 unsafe_allow_html=True,
                             )
-                        with lbl_cols[-1]:
+                        
+                        with lbl_cols[1]:
+                            ans_likert = st.radio(
+                                prompt,
+                                [str(x) for x in range(1, scale_max + 1)],
+                                key=key,
+                                index=None,
+                                horizontal=True,
+                                label_visibility="collapsed",
+                            )
+                            user_answers[unique_prompt] = ans_likert
+                        
+                        with lbl_cols[2]:
                             st.markdown(
-                                f"<div style='font-size:11px;color:#7c8db5;font-weight:600;text-align:right;line-height:1.2;'>{lbl_high}</div>",
+                                f"<div style='font-size:12px;color:#7c8db5;font-weight:600;text-align:center;line-height:1.3;padding-top:12px;white-space:nowrap;'>{lbl_high}</div>",
                                 unsafe_allow_html=True,
                             )
+                    else:
+                        ans_likert = st.radio(
+                            prompt,
+                            [str(x) for x in range(1, scale_max + 1)],
+                            key=key,
+                            index=None,
+                            horizontal=True,
+                            label_visibility="collapsed",
+                        )
+                        user_answers[unique_prompt] = ans_likert
 
         if st.form_submit_button("Submit Response →", type="primary"):
             try:
@@ -490,6 +532,7 @@ elif len(form_schema) > 0:
                     st.rerun()
                 else:
                     demo_answers = {}
+                    custom_demographic_questions = []  # Track which demo_answers are from custom demographic questions
                     raw_feedback_list = []
                     question_ids_list = []
                     sentiment_flags_list = []
@@ -513,6 +556,9 @@ elif len(form_schema) > 0:
 
                         if dim == "Commuter Profile" or q_info.get("is_demographic"):
                             demo_answers[q_info["prompt"]] = ans
+                            # Track custom demographic questions (those marked as demographic, not from standard "Commuter Profile")
+                            if q_info.get("is_demographic") and dim != "Commuter Profile":
+                                custom_demographic_questions.append(q_info["prompt"])
                         elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                             if dim in dim_scores:
                                 dim_scores[dim].append(int(ans))
@@ -524,18 +570,22 @@ elif len(form_schema) > 0:
                                 question_ids_list.append(q_id)
                                 sentiment_flags_list.append(True)
                                 raw_feedback_list.append(str(ans))
+                                
                                 # Store per-question data for individual analysis
+                                # Dimension is pre-assigned in form schema, not auto-classified
                                 question_sentiments[q_id] = {
                                     "text": str(ans),
                                     "enable_sentiment": True,
-                                    "sentiment": "pending"  # Will be filled by sentiment analysis
+                                    "sentiment": "pending",  # Will be filled by sentiment analysis
+                                    "dimension": dim  # Pre-assigned dimension from form schema
                                 }
                             else:
                                 # Still store it but marked as not for analysis
                                 question_sentiments[q_id] = {
                                     "text": str(ans),
                                     "enable_sentiment": False,
-                                    "sentiment": None
+                                    "sentiment": None,
+                                    "dimension": None
                                 }
 
                     payload = {

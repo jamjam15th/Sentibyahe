@@ -5,6 +5,7 @@ import pathlib
 from datetime import datetime, timezone, timedelta
 import uuid
 import hashlib
+from forms import create_sample_form_for_new_user
 
 # ==========================================
 # INITIAL SETUP & STATE
@@ -151,7 +152,16 @@ def handle_login_form():
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }, on_conflict="user_email").execute()
 
-                st.query_params.clear()
+                # Store session_id in session state for persistence
+                st.session_state.session_id = session_id
+                st.session_state.user_email = auth.user.email
+                st.session_state.logged_in = True
+                st.session_state.local_login = True
+                st.session_state.first_name = metadata.get("first_name", "Admin")
+                st.session_state.last_name = metadata.get("last_name", "")
+                
+                # Pass session_id in URL so it persists across reloads
+                st.query_params["session_id"] = session_id
                 st.rerun()
 
         except Exception as e:
@@ -177,7 +187,12 @@ def handle_signup_form():
                     "options": {"data": {"first_name": new_first, "last_name": new_last}},
                 })
                 if response.user:
-                    st.success("🎉 Account created! You can sign in now.")
+                    # Create a sample form with default questions for the new user
+                    sample_form = create_sample_form_for_new_user(new_email)
+                    if sample_form:
+                        st.success("🎉 Account created! A sample feedback form has been automatically created for you. You can sign in now and customize it in the Form Builder.")
+                    else:
+                        st.success("🎉 Account created! You can sign in now.")
             except Exception as e:
                 st.error(f"❌ Sign up failed: {e}")
 

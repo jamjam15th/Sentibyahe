@@ -150,6 +150,7 @@ if "filter_type"    not in st.session_state: st.session_state.filter_type    = "
 if "filter_req"     not in st.session_state: st.session_state.filter_req     = "All"
 if "_show_meta_saved" not in st.session_state: st.session_state._show_meta_saved = False
 if "_confirm_delete_all_responses" not in st.session_state: st.session_state._confirm_delete_all_responses = False
+if "question_just_added" not in st.session_state: st.session_state.question_just_added = False
 
 # ══════════════════════════════════════════
 # DB HELPERS
@@ -395,10 +396,14 @@ except Exception:
         "reach_out_contact": "",
     }
 
-# Always initialize form metadata - ensures values show even after tab switches
-st.session_state.meta_form_name = st.session_state.get("meta_form_name") or get_form(current_form_id, admin_email).get("title", "") or ""
-st.session_state.meta_title = st.session_state.get("meta_title") or form_meta.get("title", "") or ""
-st.session_state.meta_desc = st.session_state.get("meta_desc") or form_meta.get("description", "") or ""
+# Only initialize form metadata for non-form-creation flows
+# Don't prefill title/description to keep form creation UI clean
+if "meta_form_name" not in st.session_state:
+    st.session_state.meta_form_name = form_meta.get("title", "") or ""
+if "meta_desc" not in st.session_state:
+    st.session_state.meta_desc = form_meta.get("description", "") or ""
+if "meta_title" not in st.session_state:
+    st.session_state.meta_title = form_meta.get("title", "") or ""
 st.session_state.meta_reach_out = st.session_state.get("meta_reach_out") or form_meta.get("reach_out_contact") or ""
 st.session_state.meta_allow_multi = st.session_state.get("meta_allow_multi", bool(form_meta.get("allow_multiple_responses", True)))
 st.session_state.meta_include_demo = st.session_state.get("meta_include_demo", bool(form_meta.get("include_demographics", False)))
@@ -501,7 +506,8 @@ with sc1:
         "📋 Select form to edit",
         form_options,
         index=current_form_idx,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="form_selector"
     )
     
     if selected_form_name:
@@ -517,7 +523,6 @@ with sc2:
 with sc3:
     if st.button("✏️ Rename", use_container_width=True, help="Rename current form"):
         st.session_state._show_rename_form = True
-        st.rerun()
 
 # Trigger dialogs (only one at a time via if/elif)
 if st.session_state.get("_show_create_form"):
@@ -572,11 +577,10 @@ with tab_settings:
     
     with sc1:
         st.subheader("📋 Survey Copy")
-        st.text_input("Survey title", value=st.session_state.get("meta_title", ""), key="meta_title")
-        st.text_area("Description (optional)", value=st.session_state.get("meta_desc", ""), key="meta_desc", height=80, placeholder="A few words about what you're asking")
+        st.text_input("Survey title", key="meta_title")
+        st.text_area("Description (optional)", key="meta_desc", height=80, placeholder="A few words about what you're asking")
         st.text_area(
             "Reach out / Contact",
-            value=st.session_state.get("meta_reach_out", ""),
             key="meta_reach_out",
             height=80,
             placeholder="e.g. Email: research@school.edu · Office: Room 204\n\n(shown on thank-you screen)",
@@ -670,24 +674,25 @@ with tab_questions:
         with st.expander("➕ Add New Question", expanded=len(questions) == 0):
             qa1, qa2 = st.columns([2.5, 1.5])
             with qa1:
-                new_prompt = st.text_input("Question text", placeholder="e.g. How was the driver's behavior?", label_visibility="collapsed")
+                st.markdown("**Question**")
+                new_prompt = st.text_input("", placeholder="e.g. How was the driver's behavior?", label_visibility="collapsed")
             with qa2:
-                selected_dim = st.selectbox("SERVQUAL dimension", ["None"] + DIM_KEYS, label_visibility="collapsed")
-                servqual_dim = None if selected_dim == "None" else selected_dim
-
-            # Determine available question types based on SERVQUAL dimension
-            if servqual_dim is not None:
-                # If SERVQUAL dimension is selected, only allow Likert Scale
-                q_type_options = ["Rating (Likert)"]
-                q_type = "Rating (Likert)"
-            else:
-                # If no SERVQUAL dimension, allow all question types
+                st.markdown("**Type**")
                 q_type_options = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
                 q_type = st.selectbox(
-                    "Question type",
+                    "",
                     q_type_options,
                     label_visibility="collapsed",
                 )
+
+            # SERVQUAL dimension tagging (available for ANY question type)
+            st.markdown("**SERVQUAL Dimension (optional)**")
+            selected_dim = st.selectbox(
+                "",
+                ["None"] + DIM_KEYS,
+                label_visibility="collapsed"
+            )
+            servqual_dim = None if selected_dim == "None" else selected_dim
 
             new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
 
@@ -733,12 +738,12 @@ with tab_questions:
                 is_required = st.checkbox("Required", value=True)
             with opt2:
                 is_demographic_q = False
-                if q_type in ("Multiple Choice", "Multiple Select") and servqual_dim is None:
-                    is_demographic_q = st.checkbox("Mark as demographic", value=False, help="Fixed options for demographics profile")
+                if q_type in ("Multiple Choice", "Multiple Select"):
+                    is_demographic_q = st.checkbox("Mark as demographic", value=False, help="Tag this question's responses to appear in the Demographics chart on the Sentiment Dashboard")
             with opt3:
                 enable_sentiment = False
                 if q_type in ("Short Answer", "Paragraph"):
-                    enable_sentiment = st.checkbox("Enable sentiment analysis", value=True, help="Analyze responses for sentiment")
+                    enable_sentiment = st.checkbox("Enable sentiment analysis", value=True, help="Analyze responses for sentiment & SERVQUAL dimension")
 
             if st.button("💾 Save Question", use_container_width=True, type="primary"):
                 if new_prompt.strip():
@@ -764,12 +769,17 @@ with tab_questions:
                             payload["scale_label_low"]  = new_scale_label_low.strip() or None
                             payload["scale_label_high"] = new_scale_label_high.strip() or None
                         conn.client.table("form_questions").insert(payload).execute()
-                        st.success("✅ Question added!")
                         if "new_options_list" in st.session_state:
                             del st.session_state.new_options_list
+                        st.session_state.question_just_added = True  # Flag to show success message after reload
                         st.rerun()
                 else:
                     st.warning("⚠️ Enter question text first.")
+            
+            # Show success message if question was just added
+            if st.session_state.get("question_just_added"):
+                st.success("✅ New question added!")
+                st.session_state.question_just_added = False  # Clear flag
 
     # ══════════════════════════════════════════
     # FILTER & DISPLAY
@@ -1070,16 +1080,10 @@ with tab_questions:
                             e_dim_choices = ["None"] + DIM_KEYS
                             e_dim = st.selectbox("Dimension", e_dim_choices, index=e_dim_choices.index(q["servqual_dimension"]) if q.get("servqual_dimension") in e_dim_choices else 0, key=f"ed_{qid_str}")
                         
-                        # Determine available question types based on SERVQUAL dimension
-                        if e_dim != "None":
-                            # If SERVQUAL dimension is selected, only allow Likert Scale
-                            type_opts = ["Rating (Likert)"]
-                            e_type = "Rating (Likert)"
-                        else:
-                            # If no SERVQUAL dimension, allow all question types
-                            type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
-                            cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
-                            e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
+                        # Determine available question types
+                        type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
+                        cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
+                        e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
 
                         e_req = st.checkbox("Required", value=bool(q.get("is_required")), key=f"er_{qid_str}")
                         
@@ -1090,7 +1094,7 @@ with tab_questions:
                                 "Mark as demographic",
                                 value=bool(q.get("is_demographic")),
                                 key=f"edemo_{qid_str}",
-                                help="Fixed options for demographics profile",
+                                help="Tag this question's responses to appear in the Demographics chart on the Sentiment Dashboard",
                             )
                         
                         # Sentiment analysis toggle - only for Short Answer and Paragraph
@@ -1247,7 +1251,6 @@ with tab_manage_forms:
                         else:
                             if form_id in st.session_state._selected_delete_forms:
                                 st.session_state._selected_delete_forms.remove(form_id)
-                        st.rerun()
                 
                 with row2:
                     st.markdown(f"**{form['title']}**", help=form.get('description', ''))

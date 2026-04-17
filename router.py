@@ -94,8 +94,8 @@ footer                         { display: none !important; }
 [data-testid="stSidebar"] div.stButton > button {
   background: rgba(255,197,112,0.08) !important; color: var(--sand) !important;
   border: 1px solid rgba(255,197,112,0.20) !important; border-radius: 7px !important;
-  font-size: .72rem !important; font-weight: 700 !important; padding: .48rem 1rem !important;
-  margin: .3rem 1.4rem !important; width: calc(100% - 2.8rem) !important;
+  font-size: .72rem !important; font-weight: 700 !important; padding: .65rem 1.2rem !important;
+  margin: .5rem 1.4rem !important; width: calc(100% - 2.8rem) !important;
 }
 
 [data-testid="stAppViewContainer"] { background-color: transparent !important; }

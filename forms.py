@@ -79,7 +79,26 @@ def create_form(admin_email: str, title: str = "Untitled Form", description: str
         }
         
         result = conn.client.table("form_list").insert(payload).execute()
-        return result.data[0] if result.data else None
+        form = result.data[0] if result.data else None
+        
+        # Also create form_meta entry so public link works immediately
+        if form:
+            meta_payload = {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "title": title or "Untitled Form",
+                "description": description,
+                "include_demographics": False,
+                "allow_multiple_responses": True,
+                "reach_out_contact": "",
+            }
+            try:
+                conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
+            except Exception as meta_e:
+                # Log but don't fail the form creation if meta fails
+                st.warning(f"Could not create form metadata: {meta_e}")
+        
+        return form
     except Exception as e:
         st.error(f"Could not create form: {e}")
         return None
@@ -190,6 +209,11 @@ def get_current_form_id() -> str | None:
 def set_current_form(form_id: str):
     """Set the current active form in session state."""
     st.session_state.current_form_id = form_id
+    # Clear form metadata from session state so new form loads fresh
+    st.session_state.pop("meta_title", None)
+    st.session_state.pop("meta_desc", None)
+    st.session_state.pop("meta_form_name", None)
+    st.session_state.pop("meta_reach_out", None)
 
 
 def refresh_form_list(admin_email: str):
@@ -287,3 +311,224 @@ def migrate_legacy_user(admin_email: str) -> str:
     except Exception as e:
         st.warning(f"Migration note: {e}")
         return legacy_form_id
+
+
+def create_sample_form_for_new_user(admin_email: str) -> dict | None:
+    """
+    Create a default sample form with SERVQUAL questions for new users.
+    This is called automatically upon account creation.
+    """
+    try:
+        conn = get_supabase_client()
+        
+        # Step 1: Create the form
+        form = create_form(
+            admin_email,
+            title="Land Public Transportation Feedback Form",
+            description="Please share your experience with public transportation services."
+        )
+        
+        if not form:
+            return None
+        
+        form_id = form.get("form_id")
+        
+        # Step 2: Create form metadata
+        meta_payload = {
+            "admin_email": admin_email,
+            "form_id": form_id,
+            "title": "Land Public Transportation Feedback Form",
+            "description": "Please share your experience with public transportation services.",
+            "include_demographics": True,  # Enable standard demographics
+            "allow_multiple_responses": True,
+            "reach_out_contact": "",
+        }
+        conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
+        
+        # Step 3: Create default questions covering all 5 SERVQUAL dimensions
+        questions = [
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How would you rate your overall experience?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Very Unsatisfied",
+                "scale_label_high": "Very Satisfied",
+                "servqual_dimension": None,
+                "sort_order": 1,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How would you rate the cleanliness of the vehicle?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Very Dirty",
+                "scale_label_high": "Very Clean",
+                "servqual_dimension": "Tangibles",
+                "sort_order": 2,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How reliable was the schedule/timeliness?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Very Unreliable",
+                "scale_label_high": "Very Reliable",
+                "servqual_dimension": "Reliability",
+                "sort_order": 3,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How responsive was the driver to your needs?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Not Responsive",
+                "scale_label_high": "Very Responsive",
+                "servqual_dimension": "Responsiveness",
+                "sort_order": 4,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How safe did you feel during the trip?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Very Unsafe",
+                "scale_label_high": "Very Safe",
+                "servqual_dimension": "Assurance",
+                "sort_order": 5,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How courteous was the driver?",
+                "q_type": "Rating (Likert)",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "scale_max": 5,
+                "scale_label_low": "Very Rude",
+                "scale_label_high": "Very Courteous",
+                "servqual_dimension": "Empathy",
+                "sort_order": 6,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "What transport mode did you use?",
+                "q_type": "Multiple Choice",
+                "options": ["Bus", "Jeepney", "Tricycle", "E-trike", "Train (MRT/LRT)", "TNVS (Grab, etc.)", "Other"],
+                "is_required": True,
+                "is_demographic": True,
+                "enable_sentiment": False,
+                "servqual_dimension": None,
+                "sort_order": 7,
+            },
+            # Open-ended questions with SERVQUAL dimensions for detailed feedback
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Tell us about the vehicle condition and facilities (cleanliness, comfort, etc.)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Tangibles",
+                "sort_order": 8,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How would you describe your experience with schedule reliability and wait times?",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Reliability",
+                "sort_order": 9,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "What could the driver or staff do to better address your needs?",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Responsiveness",
+                "sort_order": 10,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "How safe do you feel using this service? Any safety concerns?",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Assurance",
+                "sort_order": 11,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Tell us about your experience with the politeness and helpfulness of staff or driver.",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Empathy",
+                "sort_order": 12,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Any other comments or suggestions?",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": False,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": None,
+                "sort_order": 13,
+            },
+        ]
+        
+        # Insert all questions at once
+        conn.client.table("form_questions").upsert(questions).execute()
+        
+        return form
+    except Exception as e:
+        # Log error but don't crash signup
+        print(f"⚠️ Could not create sample form for new user {admin_email}: {e}")
+        return None

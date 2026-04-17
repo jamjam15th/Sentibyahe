@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 # Underlying checkpoint for the app’s sentiment pipeline (code / weights only)
-OUR_MODEL_ID = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
+OUR_MODEL_ID = "jamjam15th/land-public-transportation-model-2"
 
 # User-facing name in Analysis copy (replace long repo id in descriptions)
 OUR_MODEL_DISPLAY_NAME = "Fine-tuned XLM-RoBERTa"
