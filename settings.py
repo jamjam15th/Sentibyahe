@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from st_supabase_connection import SupabaseConnection
+import requests
 
 # ══════════════════════════════════════════
 # 1. SETUP & CSS SHIELD (Daanalytics Theme)
@@ -82,6 +83,72 @@ button[kind="primary"] {
 conn = st.connection("supabase", type=SupabaseConnection)
 
 # ══════════════════════════════════════════
+# CONFIRMATION DIALOG
+# ══════════════════════════════════════════
+@st.dialog("Delete Account?")
+def confirm_delete_account():
+    admin_email = st.session_state.get("user_email")
+    st.markdown(
+        "⚠️ **This will permanently delete:**\n\n"
+        "- All your survey forms\n"
+        "- All response data\n"
+        "- Your account and login credentials\n\n"
+        "**This action cannot be undone.**"
+    )
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("🗑️ Delete My Account", type="primary", use_container_width=True):
+            try:
+                # Get current user ID before deleting
+                current_user = conn.client.auth.get_user()
+                user_id = current_user.user.id if current_user and current_user.user else None
+                
+                # Delete all user data in order (respecting foreign key constraints)
+                conn.client.table("form_responses").delete().eq("admin_email", admin_email).execute()
+                conn.client.table("form_questions").delete().eq("admin_email", admin_email).execute()
+                conn.client.table("form_meta").delete().eq("admin_email", admin_email).execute()
+                conn.client.table("form_list").delete().eq("admin_email", admin_email).execute()
+                conn.client.table("active_sessions").delete().eq("user_email", admin_email).execute()
+                
+                # Delete the auth user account using Supabase admin API
+                if user_id:
+                    try:
+                        SUPABASE_URL = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_URL", "")
+                        SUPABASE_SERVICE_ROLE = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_SERVICE_ROLE_KEY", "")
+                        
+                        if SUPABASE_URL and SUPABASE_SERVICE_ROLE:
+                            # Use admin API to delete user
+                            headers = {
+                                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE}",
+                                "apikey": SUPABASE_SERVICE_ROLE,
+                                "Content-Type": "application/json"
+                            }
+                            delete_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+                            response = requests.delete(delete_url, headers=headers)
+                            if response.status_code not in [200, 204]:
+                                pass  # Silently continue
+                    except Exception as auth_error:
+                        pass  # Log silently - the user data is already deleted
+                
+                # Sign out from Supabase Auth
+                try:
+                    conn.client.auth.sign_out()
+                except Exception:
+                    pass
+                
+                # Clear session state
+                st.session_state.clear()
+                st.success("✅ Account deleted successfully.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"⚠️ Error deleting account: {e}")
+    
+    with c2:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+# ══════════════════════════════════════════
 # 2. AUTHENTICATION CHECK
 # ══════════════════════════════════════════
 admin_email = st.session_state.get("user_email")
@@ -153,25 +220,9 @@ with tab1:
     
     del_confirm = st.text_input("To confirm, type exactly: **DELETE MY ACCOUNT**")
     
-    if st.button("🗑️ Permanently Delete Account", type="primary"):
-        if del_confirm == "DELETE MY ACCOUNT":
-            try:
-                conn.client.table("form_responses").delete().eq("admin_email", admin_email).execute()
-                conn.client.table("form_questions").delete().eq("admin_email", admin_email).execute()
-                conn.client.table("form_meta").delete().eq("admin_email", admin_email).execute()
-                
-                try:
-                    conn.client.rpc('delete_user').execute()
-                except Exception:
-                    pass 
-                
-                st.session_state.clear()
-                st.success("Account deleted.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"⚠️ Error: {e}")
-        else:
-            st.error("⚠️ Confirmation text incorrect.")
+    delete_enabled = del_confirm == "DELETE MY ACCOUNT"
+    if st.button("🗑️ Permanently Delete Account", type="primary", disabled=not delete_enabled):
+        confirm_delete_account()
 
 # ── TAB 2: DATA MANAGEMENT ──
 with tab2:

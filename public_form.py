@@ -225,7 +225,9 @@ try:
     # For public access, we need to get the form and owner_email from form_meta using form_id
     if not is_preview:
         # Public access: look up form_id in form_meta to find owner_email
-        form_meta = _fetch_form_meta(target_form_id)
+        # Don't use cache for sample form to ensure fresh data
+        meta_res = conn.client.table("form_meta").select("*").eq("form_id", target_form_id).limit(1).execute()
+        form_meta = meta_res.data[0] if meta_res.data else None
         if form_meta:
             owner_email = form_meta.get("admin_email")
         else:
@@ -242,6 +244,14 @@ try:
                 "allow_multiple_responses": True,
                 "reach_out_contact": "",
             }
+    
+    # Force include_demographics for sample form
+    if form_meta.get("title") == "Sentibyahe: System Evaluation Test Form":
+        form_meta["include_demographics"] = True
+        form_meta["include_standard_servqual_questions"] = True
+        # Also force reach_out_contact if empty
+        if not form_meta.get("reach_out_contact"):
+            form_meta["reach_out_contact"] = "We'd love your feedback! 💡\n\nThanks for testing Sentibyahe! Now that you've seen how the system processes your response into the five transport categories, it's time to tell us what you think. Please take 2 quick minutes to evaluate the platform's usability, performance, and overall design. Your feedback is crucial to our research.\n\nhttps://docs.google.com/forms/d/e/1FAIpQLSemJsPRgflhlRLTcgEKidMSfyWS6NZCA5m2CvEJUOQ-JPF3vA/viewform?usp=sharing&ouid=104216160606281095977"
     
     # Get questions using form_id and owner_email
     custom_questions = _fetch_form_questions(target_form_id, owner_email)
@@ -300,24 +310,43 @@ LPT_TRANSPORT_MODE_OPTIONS = [
 ]
 
 STANDARD_DEMO_QUESTIONS = [
-    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {
-        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
-        "q_type": "Multiple Select",
-        "options": LPT_TRANSPORT_MODE_OPTIONS,
-        "is_required": True,
-        "servqual_dimension": "Commuter Profile",
-        "is_demographic": True,
-    },
-    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "1. Age / Edad", "q_type": "Multiple Choice", "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "2. Gender / Kasarian", "q_type": "Multiple Choice", "options": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "3. Occupational Status / Katayuan sa Trabaho", "q_type": "Multiple Choice", "options": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance", "q_type": "Multiple Choice", "options": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?", "q_type": "Multiple Choice", "options": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan", "q_type": "Multiple Choice", "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+]
+
+STANDARD_SERVQUAL_QUESTIONS = [
+    {"prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Tangibles", "is_locked": True},
+    {"prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Tangibles", "is_locked": True},
+    {"prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Reliability", "is_locked": True},
+    {"prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Reliability", "is_locked": True},
+    {"prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Responsiveness", "is_locked": True},
+    {"prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Responsiveness", "is_locked": True},
+    {"prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi", "q_type": "Paragraph", "options": [], "is_required": False, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": None, "is_locked": True},
 ]
 
 form_schema = []
 if form_meta.get("include_demographics", False):
     form_schema.extend(STANDARD_DEMO_QUESTIONS)
-form_schema.extend(custom_questions)
+
+# Add standard SERVQUAL questions if toggle is enabled
+include_servqual = form_meta.get("include_standard_servqual_questions", True)
+if include_servqual:
+    form_schema.extend(STANDARD_SERVQUAL_QUESTIONS)
+
+# Add custom questions (excluding locked SERVQUAL if they exist in custom questions)
+for q in custom_questions:
+    if q.get("is_locked"):
+        # Skip locked SERVQUAL questions since we already added them above
+        continue
+    form_schema.append(q)
 
 allow_multiple_responses = form_meta.get("allow_multiple_responses", True)
 
@@ -338,18 +367,43 @@ def _render_reach_out_contact():
     txt = (form_meta.get("reach_out_contact") or "").strip()
     if not txt:
         return
-    # First escape HTML, then make emails/URLs clickable
-    safe = html.escape(txt)
-    clickable = _make_clickable(safe)
-    st.markdown(
-        f"""
-        <div style="margin-top:1rem;padding:12px 14px;border-radius:8px;background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.12);">
-          <div style="font-size:.7rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">How to reach us</div>
-          <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;word-break:break-word;">{clickable}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    
+    # Extract Google Forms URL
+    google_forms_pattern = r'(https://docs\.google\.com/forms[^\s]+)'
+    match = re.search(google_forms_pattern, txt)
+    
+    if match:
+        forms_url = match.group(1)
+        # Remove the URL from the text
+        text_without_url = re.sub(google_forms_pattern, '', txt).strip()
+        
+        # Escape HTML and make emails/URLs clickable for remaining text
+        safe = html.escape(text_without_url)
+        clickable = _make_clickable(safe)
+        
+        st.markdown(
+            f"""
+            <div style="margin-top:1rem;padding:12px 14px;border-radius:8px;background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.12);">
+              <div style="font-size:.7rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">How to reach us</div>
+              <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;word-break:break-word;margin-bottom:12px;">{clickable}</div>
+              <a href="{forms_url}" target="_blank" style="display:inline-block;padding:10px 20px;background:rgb(26,50,99);color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:0.9rem;">📋 Share Your Feedback</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        # Fallback to original rendering if no Google Forms URL found
+        safe = html.escape(txt)
+        clickable = _make_clickable(safe)
+        st.markdown(
+            f"""
+            <div style="margin-top:1rem;padding:12px 14px;border-radius:8px;background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.12);">
+              <div style="font-size:.7rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">How to reach us</div>
+              <div style="font-size:.9rem;color:rgb(60,85,120);white-space:pre-wrap;word-break:break-word;">{clickable}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 submitted_key = f"submitted_once_{target_form_id}"
 just_submitted_key = f"just_submitted_{target_form_id}"
 if submitted_key not in st.session_state:
@@ -593,6 +647,9 @@ elif len(form_schema) > 0:
                     }
                     
                     conn.client.table("form_responses").insert(payload).execute()
+                    
+                    # Clear dashboard cache to ensure fresh data displays immediately
+                    st.cache_data.clear()
                     
                     st.session_state[submitted_key] = True
                     st.session_state[just_submitted_key] = True

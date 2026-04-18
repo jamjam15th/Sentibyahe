@@ -56,7 +56,17 @@ def fetch_active_forms(admin_email: str) -> list:
                   .eq("is_archived", False)
                   .order("created_at", desc=True)
                   .execute())
-        return result.data or []
+        
+        forms = result.data or []
+        
+        # Sort: Sentibyahe sample form always first, then others by creation date (newest first)
+        sample_form = next((f for f in forms if f["title"] == "Sentibyahe: System Evaluation Test Form"), None)
+        other_forms = [f for f in forms if f["title"] != "Sentibyahe: System Evaluation Test Form"]
+        
+        if sample_form:
+            return [sample_form] + other_forms
+        else:
+            return forms
     except Exception as e:
         st.warning(f"Could not fetch forms: {e}")
         return []
@@ -325,8 +335,8 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
         # Step 1: Create the form
         form = create_form(
             admin_email,
-            title="Land Public Transportation Service Quality Survey",
-            description="PART 1: Demographics | PART 2: Service Quality Evaluation (SERVQUAL)\nPlease answer in pure English, pure Tagalog, or Taglish"
+            title="Sentibyahe: System Evaluation Test Form",
+            description="This is a default survey created for you to easily test the Sentibyahe platform. It contains a pre-loaded 10-item questionnaire specifically designed to measure public transport quality across five SERVQUAL dimensions: Reliability, Assurance, Tangibles, Empathy, and Responsiveness.\n\nYou do not need to create your own survey questions. Instead, please answer the form based on your actual and recent commuting experiences. Once submitted, observe how our AI reads and classifies your real-time sentiments. Your experience testing this form with your authentic feedback will serve as your basis for grading our software as an active commuter, transport stakeholder, or IT professional."
         )
         
         if not form:
@@ -338,175 +348,122 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
         meta_payload = {
             "admin_email": admin_email,
             "form_id": form_id,
-            "title": "Land Public Transportation Service Quality Survey",
-            "description": "PART 1: Demographics | PART 2: Service Quality Evaluation (SERVQUAL)\nPlease answer in pure English, pure Tagalog, or Taglish",
+            "title": "Sentibyahe: System Evaluation Test Form",
+            "description": "This is a default survey created for you to easily test the Sentibyahe platform. It contains a pre-loaded 10-item questionnaire specifically designed to measure public transport quality across five SERVQUAL dimensions: Reliability, Assurance, Tangibles, Empathy, and Responsiveness.\n\nYou do not need to create your own survey questions. Instead, please answer the form based on your actual and recent commuting experiences. Once submitted, observe how our AI reads and classifies your real-time sentiments. Your experience testing this form with your authentic feedback will serve as your basis for grading our software as an active commuter, transport stakeholder, or IT professional.",
             "include_demographics": True,
+            "include_standard_servqual_questions": True,
             "allow_multiple_responses": True,
-            "reach_out_contact": "",
+            "reach_out_contact": "We'd love your feedback! 💡\n\nThanks for testing Sentibyahe! Now that you've seen how the system processes your response into the five transport categories, it's time to tell us what you think. Please take 2 quick minutes to evaluate the platform's usability, performance, and overall design. Your feedback is crucial to our research.\n\nhttps://docs.google.com/forms/d/e/1FAIpQLSemJsPRgflhlRLTcgEKidMSfyWS6NZCA5m2CvEJUOQ-JPF3vA/viewform?usp=sharing&ouid=104216160606281095977",
+            "is_sample_form": True,
         }
         conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
         
-        # Step 3: Create comprehensive demographic and SERVQUAL questions
+        # Step 3: Create SERVQUAL questions (demographic questions are now auto-added via standard template)
         questions = [
             # ════════════════════════════════════════════════════
-            # PART 1: DEMOGRAPHICS (Questions 1-6)
-            # ════════════════════════════════════════════════════
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "1. Age / Edad",
-                "q_type": "Multiple Choice",
-                "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 1,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "2. Gender / Kasarian",
-                "q_type": "Multiple Choice",
-                "options": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 2,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "3. Occupational Status / Katayuan sa Trabaho",
-                "q_type": "Multiple Choice",
-                "options": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 3,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance",
-                "q_type": "Multiple Choice",
-                "options": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 4,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?",
-                "q_type": "Multiple Choice",
-                "options": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 5,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan",
-                "q_type": "Multiple Choice",
-                "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"],
-                "is_required": True,
-                "is_demographic": True,
-                "enable_sentiment": False,
-                "servqual_dimension": None,
-                "sort_order": 6,
-            },
-            
-            # ════════════════════════════════════════════════════
-            # PART 2: SERVQUAL SERVICE QUALITY EVALUATION
+            # PART 1: SERVQUAL SERVICE QUALITY EVALUATION (LOCKED)
             # ════════════════════════════════════════════════════
             
-            # Dimension 1: Tangibles (Physical appearance and comfort)
+            # Dimension 1: Tangibles (Physical appearance and comfort) - LIKERT RATING
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Tangibles",
                 "sort_order": 7,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Tangibles",
                 "sort_order": 8,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
-            
-            # Dimension 2: Reliability (Dependability and smooth service)
+            # Dimension 2: Reliability (Dependability and smooth service) - LIKERT RATING
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Reliability",
                 "sort_order": 9,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Reliability",
                 "sort_order": 10,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
-            
-            # Dimension 3: Responsiveness (Promptness and communication)
+            # Dimension 3: Responsiveness (Promptness and communication) - LIKERT RATING
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Responsiveness",
                 "sort_order": 11,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
                 "prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)",
-                "q_type": "Paragraph",
+                "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": "Responsiveness",
                 "sort_order": 12,
+                "is_locked": True,
+                "scale_max": 5,
+                "scale_label_low": "Poor",
+                "scale_label_high": "Excellent",
             },
-            
-            # Dimension 4: Assurance (Safety, security, and competence)
+            # Dimension 4: Assurance (Safety, security, and competence) - PARAGRAPH SENTIMENT
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
@@ -518,6 +475,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "enable_sentiment": True,
                 "servqual_dimension": "Assurance",
                 "sort_order": 13,
+                "is_locked": True,
             },
             {
                 "form_id": form_id,
@@ -530,9 +488,9 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "enable_sentiment": True,
                 "servqual_dimension": "Assurance",
                 "sort_order": 14,
+                "is_locked": True,
             },
-            
-            # Dimension 5: Empathy (Caring and individualized attention)
+            # Dimension 5: Empathy (Caring and individualized attention) - PARAGRAPH SENTIMENT
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
@@ -544,6 +502,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "enable_sentiment": True,
                 "servqual_dimension": "Empathy",
                 "sort_order": 15,
+                "is_locked": True,
             },
             {
                 "form_id": form_id,
@@ -556,6 +515,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "enable_sentiment": True,
                 "servqual_dimension": "Empathy",
                 "sort_order": 16,
+                "is_locked": True,
             },
             
             # Optional overall feedback
@@ -570,6 +530,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "enable_sentiment": True,
                 "servqual_dimension": None,
                 "sort_order": 17,
+                "is_locked": True,
             },
         ]
         

@@ -578,6 +578,10 @@ try:
         "allow_multiple_responses": True,
         "reach_out_contact": "",
     }
+    
+    # For sample forms, ensure reach_out_contact is populated even if it was empty in the database
+    if form_meta.get("title") == "Sentibyahe: System Evaluation Test Form" and not form_meta.get("reach_out_contact"):
+        form_meta["reach_out_contact"] = "We'd love your feedback! 💡\n\nThanks for testing Sentibyahe! Now that you've seen how the system processes your response into the five transport categories, it's time to tell us what you think. Please take 2 quick minutes to evaluate the platform's usability, performance, and overall design. Your feedback is crucial to our research.\n\nhttps://docs.google.com/forms/d/e/1FAIpQLSemJsPRgflhlRLTcgEKidMSfyWS6NZCA5m2CvEJUOQ-JPF3vA/viewform?usp=sharing&ouid=104216160606281095977"
 except Exception:
     form_meta = {
         "title": "Land Public Transportation Respondent Survey",
@@ -586,6 +590,19 @@ except Exception:
         "allow_multiple_responses": True,
         "reach_out_contact": "",
     }
+
+# Check if this is the sample form (first form created on new account)
+# Primary check: is_sample_form flag
+is_sample_form = bool(form_meta.get("is_sample_form", False))
+
+# Fallback: if title matches, it's the sample form (regardless of number of forms)
+if not is_sample_form and form_meta.get("title") == "Sentibyahe: System Evaluation Test Form":
+    is_sample_form = True
+    form_meta["include_demographics"] = True
+    form_meta["include_standard_servqual_questions"] = True
+
+if is_sample_form:
+    st.session_state.preview_mode = True  # Force preview mode for sample form
 
 # Only initialize form metadata for non-form-creation flows
 # Don't prefill title/description to keep form creation UI clean
@@ -598,6 +615,7 @@ if "meta_title" not in st.session_state:
 st.session_state.meta_reach_out = st.session_state.get("meta_reach_out") or form_meta.get("reach_out_contact") or ""
 st.session_state.meta_allow_multi = st.session_state.get("meta_allow_multi", bool(form_meta.get("allow_multiple_responses", True)))
 st.session_state.meta_include_demo = st.session_state.get("meta_include_demo", bool(form_meta.get("include_demographics", False)))
+st.session_state.meta_include_servqual = st.session_state.get("meta_include_servqual", bool(form_meta.get("include_standard_servqual_questions", True)))
 
 def update_meta():
     payload = {
@@ -608,6 +626,9 @@ def update_meta():
         "description": st.session_state.get("meta_desc", form_meta.get("description", "")),
         "include_demographics": st.session_state.get(
             "meta_include_demo", form_meta.get("include_demographics", False)
+        ),
+        "include_standard_servqual_questions": st.session_state.get(
+            "meta_include_servqual", form_meta.get("include_standard_servqual_questions", True)
         ),
         "allow_multiple_responses": st.session_state.get(
             "meta_allow_multi", form_meta.get("allow_multiple_responses", True)
@@ -707,21 +728,26 @@ if not viewing_editor:
     
     # 🔥 FIX 1: Compute selection state dynamically BEFORE rendering the toolbar!
     # This guarantees the count is perfectly synced with the checkboxes.
+    # Exclude sample form from selection
     selected_forms = []
+    selectable_forms = []
     for idx, form in enumerate(available_forms):
-        chk_key = f"gallery_chk_{form['form_id']}_{idx}"
-        if st.session_state.get(chk_key, False):
-            selected_forms.append(form["form_id"])
+        is_sample = form["title"] == "Sentibyahe: System Evaluation Test Form"
+        if not is_sample:
+            selectable_forms.append((idx, form))
+            chk_key = f"gallery_chk_{form['form_id']}_{idx}"
+            if st.session_state.get(chk_key, False):
+                selected_forms.append(form["form_id"])
     
     st.session_state._selected_gallery_forms = set(selected_forms)
     n_selected = len(selected_forms)
-    all_checked = (n_selected == len(available_forms)) and (len(available_forms) > 0)
+    all_checked = (n_selected == len(selectable_forms)) and (len(selectable_forms) > 0)
     
     # Header on the left, Bulk selection on the right
     toolbar_left, toolbar_right = st.columns([4, 1.5], vertical_alignment="bottom")
     
     with toolbar_left:
-        st.markdown("### 📋 Your Recent Forms")
+        st.markdown("### 📋 Your Forms")
         
     with toolbar_right:
         # 1. Selection count (Top)
@@ -729,10 +755,12 @@ if not viewing_editor:
         
         # 2. Select / Deselect All Button (Middle)
         if st.button("☑ Select All" if not all_checked else "☐ Deselect All", use_container_width=True):
-            # 🔥 FIX 2: Updates the correct session_state keys (with the idx)
+            # 🔥 FIX 2: Updates only selectable (non-sample) forms
             for idx, form in enumerate(available_forms):
-                chk_key = f"gallery_chk_{form['form_id']}_{idx}"
-                st.session_state[chk_key] = not all_checked 
+                is_sample = form["title"] == "Sentibyahe: System Evaluation Test Form"
+                if not is_sample:
+                    chk_key = f"gallery_chk_{form['form_id']}_{idx}"
+                    st.session_state[chk_key] = not all_checked 
             st.rerun()
             
         # 3. Delete Button (Appears Below when items are selected)
@@ -750,6 +778,7 @@ if not viewing_editor:
     for idx, form in enumerate(available_forms):
         form_id = form["form_id"]
         form_title = form["title"]
+        is_sample = form_title == "Sentibyahe: System Evaluation Test Form"
 
         with cols[idx % num_cols]:
             with st.container(border=True):
@@ -760,22 +789,22 @@ if not viewing_editor:
                     st.session_state.viewing_form_editor = True
                     st.rerun()
                 
-                # 2. Secondary actions
-                chk_col, rename_col, delete_col = st.columns([1.2, 1, 1], vertical_alignment="center")
+                # 2. Secondary actions (hidden for sample form)
+                if not is_sample:
+                    chk_col, rename_col, delete_col = st.columns([1.2, 1, 1], vertical_alignment="center")
 
-                with chk_col:
-                    # 🔥 FIX 3: Simplified! We let Streamlit's session_state handle the checkbox value automatically.
-                    st.checkbox("Select", key=f"gallery_chk_{form_id}_{idx}")
+                    with chk_col:
+                        st.checkbox("Select", key=f"gallery_chk_{form_id}_{idx}")
 
-                with rename_col:
-                    if st.button("✏️", key=f"rename_{form_id}_{idx}", use_container_width=True):
-                        st.session_state._rename_form_id = form_id
-                        dialog_rename_form()
+                    with rename_col:
+                        if st.button("✏️", key=f"rename_{form_id}_{idx}", use_container_width=True):
+                            st.session_state._rename_form_id = form_id
+                            dialog_rename_form()
 
-                with delete_col:
-                    if st.button("🗑️", key=f"delete_{form_id}_{idx}", use_container_width=True):
-                        st.session_state._confirm_delete_form_id = form_id
-                        dialog_delete_form_confirmation()
+                    with delete_col:
+                        if st.button("🗑️", key=f"delete_{form_id}_{idx}", use_container_width=True):
+                            st.session_state._confirm_delete_form_id = form_id
+                            dialog_delete_form_confirmation()
     
     st.stop()
 # ══════════════════════════════════════════
@@ -805,8 +834,6 @@ if current_form:
 # ══════════════════════════════════════════
 # SURVEY SETTINGS
 # ══════════════════════════════════════════
-st.markdown("### Survey Settings")
-
 if st.session_state.get("form_meta_migration_needed"):
     st.error(
         "Database column `allow_multiple_responses` is missing on `form_meta`. "
@@ -824,29 +851,35 @@ if st.session_state.get("form_meta_reach_out_migration_needed"):
 sc1, sc2 = st.columns([1.2, 1])
 
 with sc1:
-    st.subheader("📋 Survey Copy")
-    st.text_input("Survey title", key="meta_title")
-    st.text_area("Description (optional)", key="meta_desc", height=80, placeholder="A few words about what you're asking")
+    st.text_input("Survey title", key="meta_title", disabled=is_sample_form)
+    st.text_area("Description (optional)", key="meta_desc", height=80, placeholder="A few words about what you're asking", disabled=is_sample_form)
     st.text_area(
         "Reach out / Contact",
         key="meta_reach_out",
         height=80,
         placeholder="e.g. Email: research@school.edu · Office: Room 204\n\n(shown on thank-you screen)",
+        disabled=is_sample_form,
     )
     
     st.divider()
     
     st.subheader("🎯 Survey Behavior")
     st.toggle(
-        "**Allow multiple responses** from the same user/session",
+        "**Allow multiple responses**",
         key="meta_allow_multi",
         help="Uncheck if you want one response per person."
     )
-    st.toggle(
-        "**Include standard profile questions** (age, gender, transport mode, etc)",
-        key="meta_include_demo",
-        help="Automatically adds demographics section to your form."
-    )
+    if not is_sample_form:
+        st.toggle(
+            "**Include standard profile questions** (age, gender, transport mode, etc)",
+            key="meta_include_demo",
+            help="Automatically adds demographics section to your form.",
+        )
+        st.toggle(
+            "**Include standard questionnaires** (SERVQUAL evaluation)",
+            key="meta_include_servqual",
+            help="Includes the standard service quality evaluation questions (locked - cannot be edited).",
+        )
     
     st.divider()
     
@@ -931,30 +964,37 @@ st.markdown("---")
 # Get current form details
 current_form = next((f for f in available_forms if f["form_id"] == current_form_id), None)
 
+# Fetch questions first
+questions = fetch_questions(current_form_id, admin_email)
+
 # ══════════════════════════════════════════
 # MANAGE QUESTIONS SECTION
 # ══════════════════════════════════════════
-st.markdown("### Manage Questions")
+if not is_sample_form:
+    st.markdown("### Manage Questions")
 
-# Preview mode toggle
-prev_col1, prev_col2 = st.columns([3, 1])
-with prev_col1:
-    st.markdown("")
-with prev_col2:
-    st.toggle(
-        "👁 Preview",
-        value=st.session_state.preview_mode,
-        key="preview_toggle",
-    )
+    # Preview mode toggle
+    prev_col1, prev_col2 = st.columns([3, 1])
+    with prev_col1:
+        st.markdown("")
+    with prev_col2:
+        st.toggle(
+            "👁 Preview",
+            value=st.session_state.preview_mode,
+            key="preview_toggle",
+            disabled=is_sample_form,
+        )
+        if st.session_state.get("preview_toggle") is not None:
+            st.session_state.preview_mode = st.session_state.get("preview_toggle", False)
+else:
+    # For sample form, still need to handle preview_toggle to avoid errors
     if st.session_state.get("preview_toggle") is not None:
         st.session_state.preview_mode = st.session_state.get("preview_toggle", False)
-
-questions = fetch_questions(current_form_id, admin_email)
 
 # ══════════════════════════════════════════
 # ADD NEW QUESTION
 # ══════════════════════════════════════════
-if not st.session_state.preview_mode:
+if not st.session_state.preview_mode and not is_sample_form:
     with st.expander("➕ Add New Question", expanded=len(questions) == 0):
         qa1, qa2 = st.columns([2.5, 1.5])
         with qa1:
@@ -1068,7 +1108,7 @@ if not st.session_state.preview_mode:
 # ══════════════════════════════════════════
 # FILTER & DISPLAY
 # ══════════════════════════════════════════
-st.markdown("---")
+
 
 # 🔥 ADDED THE FILTER TITLE HERE
 st.markdown("#### 🔍 Filter Questions")
@@ -1089,7 +1129,12 @@ with fcol4:
 with fcol5:
     st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
 
+st.markdown("---")
+
 def passes_filter(q):
+    # Exclude locked questions from custom questions list
+    if q.get("is_locked"):
+        return False
     dim = q.get("servqual_dimension") or "General / Demographic"
     if st.session_state.filter_dim != "All" and dim != st.session_state.filter_dim:
         return False
@@ -1107,26 +1152,28 @@ def passes_filter(q):
         return False
     return True
 
-visible_questions = [q for q in questions if passes_filter(q)]
-filtered = len(visible_questions) < len(questions)
-filter_note = f"(filtered: {len(visible_questions)}/{len(questions)})" if filtered else f"({len(questions)} total)"
-
-# ══════════════════════════════════════════
-# QUESTIONS LIST
-# ══════════════════════════════════════════
-if st.session_state.preview_mode:
-    header_text = "📋 Respondent Preview"
-else:
-    header_text = f"📋 Your Questions {filter_note}"
-
-st.markdown(f"### {header_text}")
-
-if st.session_state.preview_mode:
+if is_sample_form:
+    show_demo_block = True  # Always show demo block for sample form
+elif st.session_state.preview_mode:
     show_demo_block = form_meta.get("include_demographics", False)
 else:
     show_demo_block = st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))
 
 st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
+
+# Set up the header text for questions section
+visible_questions = [q for q in questions if passes_filter(q)]
+filtered = len(visible_questions) < len(questions)
+filter_note = f"(filtered: {len(visible_questions)}/{len(questions)})" if filtered else f"({len(questions)} total)"
+
+if is_sample_form:
+    header_text = "📋 Your Questions"
+elif st.session_state.preview_mode:
+    header_text = "📋 Respondent Preview"
+else:
+    header_text = f"📋 Your Questions {filter_note}"
+
+st.markdown(f"### {header_text}")
 
 LPT_TRANSPORT_MODE_OPTIONS = [
     "Jeepney",
@@ -1140,18 +1187,26 @@ LPT_TRANSPORT_MODE_OPTIONS = [
 ]
 
 STANDARD_DEMO_QUESTIONS = [
-    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-    {
-        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
-        "q_type": "Multiple Select",
-        "options": LPT_TRANSPORT_MODE_OPTIONS,
-        "is_required": True,
-        "servqual_dimension": "Commuter Profile",
-        "is_demographic": True,
-    },
-    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "1. Age / Edad", "q_type": "Multiple Choice", "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "2. Gender / Kasarian", "q_type": "Multiple Choice", "options": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "3. Occupational Status / Katayuan sa Trabaho", "q_type": "Multiple Choice", "options": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance", "q_type": "Multiple Choice", "options": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?", "q_type": "Multiple Choice", "options": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+    {"prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan", "q_type": "Multiple Choice", "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+]
+
+STANDARD_SERVQUAL_QUESTIONS = [
+    {"prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi", "q_type": "Paragraph", "options": [], "is_required": False, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": None, "is_locked": True},
 ]
 
 # ── Helper Functions for Arrow Buttons Reordering ──
@@ -1205,8 +1260,6 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False):
         else ""
     )
 
-    locked_badge = '<span style="font-size:11px;font-weight:700;color:#fff;background:#5566a0;padding:2px 6px;border-radius:4px;margin-right:4px;">🔒 Locked</span>' if is_locked else ""
-
     extra = ""
     if q["q_type"] in ("Rating (Likert)", "Rating (1-5)"):
         extra = likert_preview(q)
@@ -1233,7 +1286,7 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False):
     border_style = "2px dashed #b0bcd8" if is_locked else "none"
     bg_style = "#fafbfc" if is_locked else "transparent"
 
-    html_str = f'<div style="background:{bg_style};border:{border_style};border-radius:8px;padding:8px 4px;width:100%;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span>{locked_badge}<span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
+    html_str = f'<div style="background:{bg_style};border:{border_style};border-radius:8px;padding:8px 4px;width:100%;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span><span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
     
     return html_str
 
@@ -1249,7 +1302,19 @@ if st.session_state.preview_mode:
         for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
             st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
             st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+        if not is_sample_form:
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+    
+    # Show locked SERVQUAL questions if enabled in preview mode
+    show_servqual = st.session_state.get("meta_include_servqual", form_meta.get("include_standard_servqual_questions", True))
+    if show_servqual:
+        if not is_sample_form:
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard SERVQUAL Evaluation Questions</p>", unsafe_allow_html=True)
+        for i, sq in enumerate(STANDARD_SERVQUAL_QUESTIONS):
+            q_num = len(STANDARD_DEMO_QUESTIONS) + i + 1 if show_demo_block else i + 1
+            st.markdown(get_card_html(i, sq, q_num_label=f"Q{q_num}", is_locked=True), unsafe_allow_html=True)
+            st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
             
     if len(visible_questions) > 0:
         st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
@@ -1266,7 +1331,21 @@ else:
         for i, dq in enumerate(STANDARD_DEMO_QUESTIONS):
             st.markdown(get_card_html(i, dq, q_num_label=f"Q{i+1}", is_locked=True), unsafe_allow_html=True)
             st.markdown("<div style='margin-bottom:0.8rem;'></div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+        if not is_sample_form:
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+
+    # Show locked SERVQUAL questions if enabled
+    show_servqual = st.session_state.get("meta_include_servqual", form_meta.get("include_standard_servqual_questions", True))
+    if show_servqual and not filtered:
+        if not is_sample_form:
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Standard SERVQUAL Evaluation Questions</p>", unsafe_allow_html=True)
+        for i, sq in enumerate(STANDARD_SERVQUAL_QUESTIONS):
+            q_num = len(STANDARD_DEMO_QUESTIONS) + i + 1 if show_demo_block else i + 1
+            st.markdown(get_card_html(i, sq, q_num_label=f"Q{q_num}", is_locked=True), unsafe_allow_html=True)
+            st.markdown("<div style='margin-bottom:0.8rem;'></div>", unsafe_allow_html=True)
+        if not is_sample_form:
+            st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
 
     if len(questions) == 0:
         if not show_demo_block:
@@ -1345,20 +1424,20 @@ else:
                             st.rerun()
 
                     with up_col:
-                        if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0, use_container_width=True):
+                        if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0 or q.get("is_locked"), use_container_width=True):
                             move_question_order(visible_questions, idx, "up")
 
                     with down_col:
-                        if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1, use_container_width=True):
+                        if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1 or q.get("is_locked"), use_container_width=True):
                             move_question_order(visible_questions, idx, "down")
 
                     with edit_col:
-                        if st.button("✏️", key=f"edit_btn_{qid_str}", use_container_width=True, help="Edit"):
+                        if st.button("✏️", key=f"edit_btn_{qid_str}", use_container_width=True, help="Edit", disabled=q.get("is_locked")):
                             st.session_state.editing_id = qid_str
                             st.rerun()
 
                     with del_col:
-                        if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True, help="Delete"):
+                        if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True, help="Delete", disabled=q.get("is_locked")):
                             st.session_state._confirm_del_qid = q["id"]
                             st.session_state._confirm_del_qid_str = qid_str
 

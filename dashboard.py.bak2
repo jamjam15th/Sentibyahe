@@ -608,9 +608,9 @@ def _explode_demo_series(series: pd.Series) -> pd.Series:
 def _demo_chart_specs(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
     specs: list[tuple[str, str]] = []
     for col, lab in [
-        ("1. Age / Edad", "Age Bracket"),
-        ("2. Gender / Kasarian", "Gender"),
-        ("3. Occupational Status / Katayuan sa Trabaho", "Occupation"),
+        ("What is your age bracket?", "Age Bracket"),
+        ("What is your gender?", "Gender"),
+        ("What is your primary occupation?", "Occupation"),
     ]:
         if col in demo_df.columns:
             specs.append((col, lab))
@@ -618,7 +618,7 @@ def _demo_chart_specs(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
         if tk in demo_df.columns:
             specs.append((tk, "Land public transportation mode"))
             break
-    commute_c = "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?"
+    commute_c = "How often do you commute?"
     if commute_c in demo_df.columns:
         specs.append((commute_c, "Commute Frequency"))
     return specs
@@ -651,12 +651,10 @@ def _demo_chart_specs_all(demo_df: pd.DataFrame, custom_demographic_prompts: lis
 
 def _is_demographic_question(prompt: str) -> bool:
     demographic_prompts = {
-        "1. Age / Edad",
-        "2. Gender / Kasarian",
-        "3. Occupational Status / Katayuan sa Trabaho",
-        "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance",
-        "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?",
-        "6. Most frequently used transport mode / Pinakamadalas na sinasakyan",
+        "What is your age bracket?",
+        "What is your gender?",
+        "What is your primary occupation?",
+        "How often do you commute?",
     }
     demographic_prompts.update(TRANSPORT_DEMO_KEYS)
     prompt_lower = prompt.lower().strip() if prompt else ""
@@ -1656,155 +1654,6 @@ def render_dashboard():
 
                     triage_html += '</div>'
                     st.markdown(triage_html, unsafe_allow_html=True)
-        
-        # ── Quantitative Analysis Data ──
-        st.markdown("""<div style="height: 2rem;"></div>""", unsafe_allow_html=True)
-        with st.expander("📊 Quantitative Analysis Data", expanded=True):
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
-                Quantitative Guide
-              </div>
-              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation—service quality, vehicles, experience, or anything you asked on a scale.<br><br>
-                <strong>Score by Selected Context:</strong> average SERVQUAL (and general) scores grouped by a field from the respondent profile (e.g. how often they ride, mode type, etc.).<br>
-                <strong>How to use:</strong> pick a grouping that fits your research question, then see which segments score higher or lower on each dimension.<br><br>
-                <strong>How to use:</strong> name strengths and problem areas in your analysis and tie them to the SERVQUAL framework.<br><br>
-                <strong>Likert Response Log:</strong> each numeric answer with question text and time.<br>
-                <strong>How to use:</strong> audit the data, spot outliers, and support tables or appendices with raw-scale answers.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if not has_any_rating_data:
-                st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
-                  <p>No rating scores available yet.<br>
-                  Assign SERVQUAL dimensions or leave questions untagged
-                  (they appear as General Ratings) in Form Builder.</p>
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
-                likert_rows = []
-                for _, row in df.iterrows():
-                    ans_map = row.get("answers", {})
-                    submitted = row.get("created_at", None)
-                    if not isinstance(ans_map, dict):
-                        continue
-                    for question, answer in ans_map.items():
-                        score = pd.to_numeric(answer, errors="coerce")
-                        if pd.Series(score).isna().all():
-                            continue
-                        question_text = str(question)
-                        base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
-                        schema_scale = question_scale_map.get(question_text)
-                        if schema_scale is None:
-                            schema_scale = question_scale_map.get(base_question)
-                        if schema_scale is not None and schema_scale > 1:
-                            q_scale_max = float(schema_scale)
-                        else:
-                            q_scores = pd.to_numeric(
-                                df["answers"].apply(
-                                    lambda a: a.get(question) if isinstance(a, dict) else None
-                                ),
-                                errors="coerce",
-                            )
-                            q_max = q_scores.max()
-                            q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
-                        score_norm = normalize_to_5(float(score), q_scale_max)
-                        scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
-                        
-                        # Get SERVQUAL dimension for this question
-                        q_dimension = form_schema.get(question_text, {}).get("dimension")
-                        if q_dimension is None:
-                            q_dimension = form_schema.get(base_question, {}).get("dimension")
-                        dimension_display = q_dimension if q_dimension else "Untagged"
-                        
-                        likert_rows.append({
-                            "Question": str(question),
-                            "Dimension": dimension_display,
-                            "Score": int(score) if float(score).is_integer() else float(score),
-                            "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
-                            "ScoreNormalized": round(float(score_norm), 2),
-                            "Submitted": submitted,
-                        })
-
-                if likert_rows:
-                    likert_df = pd.DataFrame(likert_rows)
-                    likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
-                    likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
-
-                    q_avg = (
-                        likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
-                        .mean()
-                        .rename(columns={"ScoreNormalized": "Average Score"})
-                    )
-                    q_avg["Responses"] = likert_df.groupby("Question").size().values
-                    q_avg = q_avg.sort_values("Average Score", ascending=False)
-                    top_n = q_avg.head(5)
-                    bottom_n = q_avg.tail(5)
-                    top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
-                    top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
-
-                    tb_chart = (
-                        alt.Chart(top_bottom)
-                        .mark_bar(cornerRadiusEnd=4)
-                        .encode(
-                            y=alt.Y("Question:N", sort="-x", title="Question"),
-                            x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
-                            color=alt.Color(
-                                "Average Score:Q",
-                                scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
-                                legend=alt.Legend(title="Score (/5)"),
-                            ),
-                            tooltip=[
-                                alt.Tooltip("Question:N"),
-                                alt.Tooltip("Average Score:Q", format=".2f"),
-                                alt.Tooltip("Responses:Q"),
-                                alt.Tooltip("Category:N", title="Group"),
-                            ],
-                        )
-                        .properties(height=280)
-                    )
-                    st.altair_chart(tb_chart, use_container_width=True)
-                    
-                    st.markdown('<div class="section-head">Score Distribution</div>', unsafe_allow_html=True)
-                    st.caption("Breakdown of how many respondents gave each score for each question.")
-                    
-                    # Create score distribution table
-                    score_dist = []
-                    for question in likert_df["Question"].unique():
-                        q_data = likert_df[likert_df["Question"] == question]
-                        q_dimension = q_data["Dimension"].iloc[0] if len(q_data) > 0 else "Untagged"
-                        
-                        # Get the scale max for this question
-                        scale_str = q_data["Score (Selected Scale)"].iloc[0] if len(q_data) > 0 else "0/5"
-                        scale_max = int(scale_str.split("/")[1]) if "/" in scale_str else 5
-                        
-                        # Count scores
-                        score_counts = q_data["Score"].value_counts().sort_index()
-                        
-                        row = {
-                            "Question": question,
-                            "Dimension": q_dimension,
-                            "Total Responses": len(q_data)
-                        }
-                        
-                        # Add count for each score
-                        for score in range(1, int(scale_max) + 1):
-                            row[f"Score {score}"] = int(score_counts.get(score, 0))
-                        
-                        score_dist.append(row)
-                    
-                    if score_dist:
-                        dist_df = pd.DataFrame(score_dist)
-                        st.dataframe(
-                            dist_df,
-                            use_container_width=True,
-                            hide_index=True,
-                            height=300,
-                        )
-                else:
-                    st.info("No Likert responses found in the selected date range.")
 
     # ─────────────────────────────────
     # TAB 2 — SERVQUAL SENTIMENT (OPEN-ENDED)
@@ -2422,6 +2271,7 @@ def render_dashboard():
                     "What is your primary occupation?",
                     "What primary land public transportation mode do you usually use?",
                     "Which PUV or transport types do you usually ride or use? (Select all that apply)",
+                    "Which Land Public Transportation modes do you usually use? (Select all that apply)",
                     "Which land public transportation modes do you usually use? (Select all that apply)",
                     "How often do you commute?",
                 }
@@ -2455,9 +2305,8 @@ def render_dashboard():
                         
                         q_id = q_text_to_id.get(question)
                         
-                        if isinstance(question_sentiments, dict):
-                            # Look up by question text (prompt), not by ID
-                            q_data = question_sentiments.get(question, {})
+                        if isinstance(question_sentiments, dict) and q_id:
+                            q_data = question_sentiments.get(q_id, {})
                             if isinstance(q_data, dict):
                                 if q_data.get("enable_sentiment") is False:
                                     continue
@@ -2607,13 +2456,31 @@ def render_dashboard():
             q_sentiment_data = []
             
             if "question_sentiments" in df_sent.columns:
+                try:
+                    q_text_to_id = {}
+                    q_res = conn.client.table("form_questions").select("id, prompt").eq("admin_email", admin_email).eq("form_id", current_form_id).execute()
+                    for q_row in (q_res.data or []):
+                        q_text_to_id[q_row.get("prompt", "")] = str(q_row.get("id", ""))
+                except Exception:
+                    q_text_to_id = {}
+                
                 for _, row in df_sent.iterrows():
                     question_sentiments = row.get("question_sentiments", {})
                     
                     if isinstance(question_sentiments, dict):
-                        # question_sentiments is keyed by question text (prompt), not ID
-                        for question_text, q_data in question_sentiments.items():
+                        for q_id, q_data in question_sentiments.items():
                             if isinstance(q_data, dict):
+                                ans_map = row.get("answers", {})
+                                question_text = None
+                                
+                                for q_text, qid in q_text_to_id.items():
+                                    if qid == q_id:
+                                        question_text = q_text
+                                        break
+                                
+                                if not question_text:
+                                    continue
+                                
                                 if q_data.get("enable_sentiment") is False:
                                     continue
                                 
@@ -2681,11 +2548,152 @@ def render_dashboard():
     # TAB 4 — QUANTITATIVE
     # ─────────────────────────────────
     with tab4:
-        st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
-          <p><strong>Quantitative Analysis moved to SERVQUAL Radar tab</strong><br><br>
-          The detailed Likert rating analysis and score distribution is now available at the bottom of the <strong>SERVQUAL Radar</strong> tab for integrated analysis.
-          </p>
-        </div>""", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                    border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+          <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+            Quantitative Guide
+          </div>
+          <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+            This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation—service quality, vehicles, experience, or anything you asked on a scale.<br><br>
+            <strong>Score by Selected Context:</strong> average SERVQUAL (and general) scores grouped by a field from the respondent profile (e.g. how often they ride, mode type, etc.).<br>
+            <strong>How to use:</strong> pick a grouping that fits your research question, then see which segments score higher or lower on each dimension.<br><br>
+            <strong>How to use:</strong> name strengths and problem areas in your analysis and tie them to the SERVQUAL framework.<br><br>
+            <strong>Likert Response Log:</strong> each numeric answer with question text and time.<br>
+            <strong>How to use:</strong> audit the data, spot outliers, and support tables or appendices with raw-scale answers.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if not has_any_rating_data:
+            st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
+              <p>No rating scores available yet.<br>
+              Assign SERVQUAL dimensions or leave questions untagged
+              (they appear as General Ratings) in Form Builder.</p>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
+            likert_rows = []
+            for _, row in df.iterrows():
+                ans_map = row.get("answers", {})
+                submitted = row.get("created_at", None)
+                if not isinstance(ans_map, dict):
+                    continue
+                for question, answer in ans_map.items():
+                    score = pd.to_numeric(answer, errors="coerce")
+                    if pd.Series(score).isna().all():
+                        continue
+                    question_text = str(question)
+                    base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
+                    schema_scale = question_scale_map.get(question_text)
+                    if schema_scale is None:
+                        schema_scale = question_scale_map.get(base_question)
+                    if schema_scale is not None and schema_scale > 1:
+                        q_scale_max = float(schema_scale)
+                    else:
+                        q_scores = pd.to_numeric(
+                            df["answers"].apply(
+                                lambda a: a.get(question) if isinstance(a, dict) else None
+                            ),
+                            errors="coerce",
+                        )
+                        q_max = q_scores.max()
+                        q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
+                    score_norm = normalize_to_5(float(score), q_scale_max)
+                    scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
+                    
+                    # Get SERVQUAL dimension for this question
+                    q_dimension = form_schema.get(question_text, {}).get("dimension")
+                    if q_dimension is None:
+                        q_dimension = form_schema.get(base_question, {}).get("dimension")
+                    dimension_display = q_dimension if q_dimension else "Untagged"
+                    
+                    likert_rows.append({
+                        "Question": str(question),
+                        "Dimension": dimension_display,
+                        "Score": int(score) if float(score).is_integer() else float(score),
+                        "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
+                        "ScoreNormalized": round(float(score_norm), 2),
+                        "Submitted": submitted,
+                    })
+
+            if likert_rows:
+                likert_df = pd.DataFrame(likert_rows)
+                likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
+                likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
+
+                q_avg = (
+                    likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
+                    .mean()
+                    .rename(columns={"ScoreNormalized": "Average Score"})
+                )
+                q_avg["Responses"] = likert_df.groupby("Question").size().values
+                q_avg = q_avg.sort_values("Average Score", ascending=False)
+                top_n = q_avg.head(5)
+                bottom_n = q_avg.tail(5)
+                top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
+                top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
+
+                tb_chart = (
+                    alt.Chart(top_bottom)
+                    .mark_bar(cornerRadiusEnd=4)
+                    .encode(
+                        y=alt.Y("Question:N", sort="-x", title="Question"),
+                        x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
+                        color=alt.Color(
+                            "Average Score:Q",
+                            scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
+                            legend=alt.Legend(title="Score (/5)"),
+                        ),
+                        tooltip=[
+                            alt.Tooltip("Question:N"),
+                            alt.Tooltip("Average Score:Q", format=".2f"),
+                            alt.Tooltip("Responses:Q"),
+                            alt.Tooltip("Category:N", title="Group"),
+                        ],
+                    )
+                    .properties(height=280)
+                )
+                st.altair_chart(tb_chart, use_container_width=True)
+                
+                st.markdown('<div class="section-head">Score Distribution</div>', unsafe_allow_html=True)
+                st.caption("Breakdown of how many respondents gave each score for each question.")
+                
+                # Create score distribution table
+                score_dist = []
+                for question in likert_df["Question"].unique():
+                    q_data = likert_df[likert_df["Question"] == question]
+                    q_dimension = q_data["Dimension"].iloc[0] if len(q_data) > 0 else "Untagged"
+                    
+                    # Get the scale max for this question
+                    scale_str = q_data["Score (Selected Scale)"].iloc[0] if len(q_data) > 0 else "0/5"
+                    scale_max = int(scale_str.split("/")[1]) if "/" in scale_str else 5
+                    
+                    # Count scores
+                    score_counts = q_data["Score"].value_counts().sort_index()
+                    
+                    row = {
+                        "Question": question,
+                        "Dimension": q_dimension,
+                        "Total Responses": len(q_data)
+                    }
+                    
+                    # Add count for each score
+                    for score in range(1, int(scale_max) + 1):
+                        row[f"Score {score}"] = int(score_counts.get(score, 0))
+                    
+                    score_dist.append(row)
+                
+                if score_dist:
+                    dist_df = pd.DataFrame(score_dist)
+                    st.dataframe(
+                        dist_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=300,
+                    )
+            else:
+                st.info("No Likert responses found in the selected date range.")
 
     # ─────────────────────────────────
     # TAB 5 — DEMOGRAPHICS
@@ -2919,12 +2927,18 @@ def render_dashboard():
                 show_demo_block = form_meta_data.get("include_demographics", False) if form_meta_data else False
                 
                 STANDARD_DEMO_QUESTIONS = [
-                    {"prompt": "1. Age / Edad", "q_type": "Multiple Choice", "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-                    {"prompt": "2. Gender / Kasarian", "q_type": "Multiple Choice", "options": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-                    {"prompt": "3. Occupational Status / Katayuan sa Trabaho", "q_type": "Multiple Choice", "options": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-                    {"prompt": "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance", "q_type": "Multiple Choice", "options": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-                    {"prompt": "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?", "q_type": "Multiple Choice", "options": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
-                    {"prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan", "q_type": "Multiple Choice", "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {"prompt": "What is your age bracket?", "q_type": "Multiple Choice", "options": ["18-24", "25-34", "35-44", "45-54", "55 and above"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {"prompt": "What is your gender?", "q_type": "Multiple Choice", "options": ["Male", "Female", "Prefer not to say"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {"prompt": "What is your primary occupation?", "q_type": "Multiple Choice", "options": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
+                    {
+                        "prompt": "Which Land Public Transportation modes do you usually use? (Select all that apply)",
+                        "q_type": "Multiple Select",
+                        "options": ["Jeepney", "Modern jeepney / E-jeep", "Bus", "UV Express", "Tricycle", "Train (MRT / LRT / PNR)", "TNVS (Grab, etc.)", "Other"],
+                        "is_required": True,
+                        "servqual_dimension": "Commuter Profile",
+                        "is_demographic": True,
+                    },
+                    {"prompt": "How often do you commute?", "q_type": "Multiple Choice", "options": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
                 ]
                 
                 if show_demo_block:

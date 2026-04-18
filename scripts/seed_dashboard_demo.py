@@ -61,10 +61,11 @@ FEEDBACK_SNIPPETS = [
 ] + FEEDBACK_SNIPPETS_EXTRA
 
 DEMO_OPTIONS = {
-    "What is your age bracket?": ["18-24", "25-34", "35-44", "45-54", "55 and above"],
-    "What is your gender?": ["Male", "Female", "Prefer not to say"],
-    "What is your primary occupation?": ["Student", "Employed", "Self-employed", "Unemployed", "Retired"],
-    "How often do you commute?": ["Daily", "3-4 times a week", "1-2 times a week", "Rarely"],
+    "1. Age / Edad": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"],
+    "2. Gender / Kasarian": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"],
+    "3. Occupational Status / Katayuan sa Trabaho": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"],
+    "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"],
+    "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"],
 }
 
 TRANSPORT_MULTI = [
@@ -109,14 +110,14 @@ def enrich_response_for_dashboard(row: dict, seq: int, rng: random.Random) -> di
     demo = dict(out.get("demo_answers") or {})
     ans = dict(out.get("answers") or {})
 
-    ages = DEMO_OPTIONS["What is your age bracket?"]
-    demo.setdefault("What is your age bracket?", ages[seq % len(ages)])
-    genders = DEMO_OPTIONS["What is your gender?"]
-    demo.setdefault("What is your gender?", genders[seq % len(genders)])
-    occs = DEMO_OPTIONS["What is your primary occupation?"]
-    demo.setdefault("What is your primary occupation?", occs[seq % len(occs)])
-    commutes = DEMO_OPTIONS["How often do you commute?"]
-    demo.setdefault("How often do you commute?", commutes[seq % len(commutes)])
+    ages = DEMO_OPTIONS["1. Age / Edad"]
+    demo.setdefault("1. Age / Edad", ages[seq % len(ages)])
+    genders = DEMO_OPTIONS["2. Gender / Kasarian"]
+    demo.setdefault("2. Gender / Kasarian", genders[seq % len(genders)])
+    occs = DEMO_OPTIONS["3. Occupational Status / Katayuan sa Trabaho"]
+    demo.setdefault("3. Occupational Status / Katayuan sa Trabaho", occs[seq % len(occs)])
+    commutes = DEMO_OPTIONS["5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?"]
+    demo.setdefault("5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?", commutes[seq % len(commutes)])
 
     modes = list(demo.get(STANDARD_TRANSPORT_MULTI) or _transport_modes_for_seq(seq))
     demo.setdefault(STANDARD_TRANSPORT_MULTI, modes)
@@ -325,16 +326,16 @@ def build_minimal_payload(
     """Used when there are no rows in form_questions (dashboard still populates)."""
     text = _pick_feedback_text(rng)
     sentiment_label, sentiment_score = _sentiment_for_text(text, rng)
-    ages = DEMO_OPTIONS["What is your age bracket?"]
-    genders = DEMO_OPTIONS["What is your gender?"]
-    occs = DEMO_OPTIONS["What is your primary occupation?"]
-    commutes = DEMO_OPTIONS["How often do you commute?"]
+    ages = DEMO_OPTIONS["1. Age / Edad"]
+    genders = DEMO_OPTIONS["2. Gender / Kasarian"]
+    occs = DEMO_OPTIONS["3. Occupational Status / Katayuan sa Trabaho"]
+    commutes = DEMO_OPTIONS["5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?"]
     demo_answers = {
-        "What is your age bracket?": ages[seq % len(ages)],
-        "What is your gender?": genders[seq % len(genders)],
-        "What is your primary occupation?": occs[seq % len(occs)],
+        "1. Age / Edad": ages[seq % len(ages)],
+        "2. Gender / Kasarian": genders[seq % len(genders)],
+        "3. Occupational Status / Katayuan sa Trabaho": occs[seq % len(occs)],
         STANDARD_TRANSPORT_MULTI: _transport_modes_for_seq(seq),
-        "How often do you commute?": commutes[seq % len(commutes)],
+        "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?": commutes[seq % len(commutes)],
     }
     answers = {
         **{k: v for k, v in demo_answers.items()},

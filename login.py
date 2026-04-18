@@ -143,8 +143,8 @@ def render_card_header(active):
     card_title = "Welcome back" if active == "login" else "Join the platform"
     st.html(f"""
     <div style="text-align: center;">
-        <h2 style="margin-bottom: 5px; color: ;">🚐 Sentibyahe</h2>
-        <p style="font-size: 1rem; color: #7c8db5; margin-top: 0; font-style: italic;">
+        <h1 style="margin-bottom: 5px; color: ;">Sentibyahe</h1>
+        <p style="font-size: 1.3rem; color: #7c8db5; margin-top: 0; font-style: italic;">
         AI-Powered Sentiment Surveys
         </p>
     </div>

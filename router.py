@@ -258,7 +258,7 @@ if "form_id" in st.query_params:
 
 elif st.session_state.get("logged_in", False):
     pg = st.navigation(
-        [dashboard_page, builder_page, servqual_page, settings_page, public_form_page],
+        [builder_page, dashboard_page, servqual_page, settings_page, public_form_page],
         position="sidebar"
     )
 
