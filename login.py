@@ -39,6 +39,44 @@ active_tab = st.session_state.auth_tab
 def inject_custom_css():
     st.html("""
       <style>
+        /* 1. Nuke the Header and Toolbar */
+        header[data-testid="stHeader"], 
+        [data-testid="stHeader"],
+        [data-testid="collapsedControl"] {
+            display: none !important;
+            height: 0 !important;
+            width: 0 !important;
+        }
+
+        /* 2. Remove the padding from the root main container */
+        .main .block-container {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+
+        /* 3. Force the app view to start at the absolute top */
+        [data-testid="stAppViewContainer"] {
+            padding: 0 !important;
+        }
+        
+        [data-testid="stMainViewContainer"] {
+            margin-top: -5rem !important; /* Forces content to slide up into the header gap */
+        }
+
+        /* 4. Fix for the Columns to ensure they stretch to the top */
+        [data-testid="stHorizontalBlock"] {
+            margin-top: 0 !important;
+        }
+
+        /* 5. Ensure your left container actually touches the edge */
+        .left-container {
+            margin: 0 !important;
+            padding-top: 0 !important;
+            min-height: 100vh;
+        }
+
         .main, section.main,
         .block-container {
           overflow: hidden !important; height: 100vh !important; padding: 0 !important; margin: 0 !important; max-width: 100% !important;
@@ -65,7 +103,7 @@ def inject_custom_css():
         .mobile-badge-wrapper .lp-badge { margin: 0 auto !important; }
         .lp-h1 { font-family: 'Libre Baskerville', serif !important; font-size: clamp(2.3rem, 4vw, 3rem) !important; font-weight: 700 !important; color: #ffffff !important; line-height: 1.25; margin: 0 0 .85rem; }
         .lp-h1 em { font-style: italic !important; color: var(--gold) !important; }
-        .lp-desc { font-size: 1.3rem !important; font-weight: 400 !important; color: var(--sand) !important; line-height: 1.72; max-width: 280px; margin: 0 0 1.6rem; }
+        .lp-desc { font-size: 1.3rem !important; font-weight: 400 !important; color: var(--sand) !important; line-height: 1.72; max-width: 300px; margin: 0 0 1.6rem; }
         .card-header { padding-bottom: 0; margin-bottom: 0; }
         .card-label { font-size: 1rem; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--steel); display: block; margin-bottom: .15rem; }
         .tab-switcher { display: flex; gap: 3px; background: rgba(26,50,99,0.07); border-radius: 7px; padding: 2px; margin-bottom: 1rem; }
@@ -104,8 +142,11 @@ def render_card_header(active):
     s_cls = "tb active" if active == "signup" else "tb"
     card_title = "Welcome back" if active == "login" else "Join the platform"
     st.html(f"""
-    <div class="mobile-badge-wrapper">
-        <div class="lp-badge"><span>🚌 Land Public Transportation Analytics</span></div>
+    <div style="text-align: center;">
+        <h2 style="margin-bottom: 5px; color: ;">🚐 Sentibyahe</h2>
+        <p style="font-size: 1rem; color: #7c8db5; margin-top: 0; font-style: italic;">
+        AI-Powered Sentiment Surveys
+        </p>
     </div>
     <div class="card-header">
         <span class="card-label">Secure Access</span>

@@ -149,6 +149,7 @@ div.stFormSubmitButton > button {
   background: var(--navy) !important; color: var(--gold) !important;
   border-radius: 6px !important; padding: .65rem 2.2rem !important;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -460,45 +461,28 @@ elif len(form_schema) > 0:
                     user_answers[unique_prompt] = picked
                 elif q_type in ("Rating (Likert)", "Rating (1-5)"):
                     scale_max = int(q.get("scale_max") or 5)
-                    lbl_low  = q.get("scale_label_low", "")
-                    lbl_high = q.get("scale_label_high", "")
+                    lbl_low  = q.get("scale_label_low", "Strongly Disagree")
+                    lbl_high = q.get("scale_label_high", "Strongly Agree")
                     
-                    if lbl_low or lbl_high:
-                        # Create 3-column layout: label | buttons | label
-                        lbl_cols = st.columns([1, 3, 1], gap="small")
-                        
-                        with lbl_cols[0]:
-                            st.markdown(
-                                f"<div style='font-size:12px;color:#7c8db5;font-weight:600;text-align:center;line-height:1.3;padding-top:12px;white-space:nowrap;'>{lbl_low}</div>",
-                                unsafe_allow_html=True,
-                            )
-                        
-                        with lbl_cols[1]:
-                            ans_likert = st.radio(
-                                prompt,
-                                [str(x) for x in range(1, scale_max + 1)],
-                                key=key,
-                                index=None,
-                                horizontal=True,
-                                label_visibility="collapsed",
-                            )
-                            user_answers[unique_prompt] = ans_likert
-                        
-                        with lbl_cols[2]:
-                            st.markdown(
-                                f"<div style='font-size:12px;color:#7c8db5;font-weight:600;text-align:center;line-height:1.3;padding-top:12px;white-space:nowrap;'>{lbl_high}</div>",
-                                unsafe_allow_html=True,
-                            )
-                    else:
-                        ans_likert = st.radio(
-                            prompt,
-                            [str(x) for x in range(1, scale_max + 1)],
-                            key=key,
-                            index=None,
-                            horizontal=True,
-                            label_visibility="collapsed",
-                        )
-                        user_answers[unique_prompt] = ans_likert
+
+                    # 2. Render the radio buttons
+                    ans_likert = st.radio(
+                        prompt,
+                        [str(x) for x in range(1, scale_max + 1)],
+                        key=key,
+                        index=None,
+                        horizontal=True,
+                        label_visibility="collapsed",
+                    )
+
+                    # 1. Display the Prompt labels in a flex container above or around the radio
+                    st.markdown(f"""
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; px: 5px;">
+                            <span style="font-size: 0.85rem; color: #7c8db5; font-weight: 600;">{lbl_low}</span>
+                            <span style="font-size: 0.85rem; color: #7c8db5; font-weight: 600;">{lbl_high}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    user_answers[unique_prompt] = ans_likert
 
         if st.form_submit_button("Submit Response →", type="primary"):
             try:

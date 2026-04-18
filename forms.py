@@ -315,8 +315,9 @@ def migrate_legacy_user(admin_email: str) -> str:
 
 def create_sample_form_for_new_user(admin_email: str) -> dict | None:
     """
-    Create a default sample form with SERVQUAL questions for new users.
+    Create a default sample form with comprehensive demographic and SERVQUAL questions for new users.
     This is called automatically upon account creation.
+    Includes bilingual (English/Tagalog) support for all questions.
     """
     try:
         conn = get_supabase_client()
@@ -324,8 +325,8 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
         # Step 1: Create the form
         form = create_form(
             admin_email,
-            title="Land Public Transportation Feedback Form",
-            description="Please share your experience with public transportation services."
+            title="Land Public Transportation Service Quality Survey",
+            description="PART 1: Demographics | PART 2: Service Quality Evaluation (SERVQUAL)\nPlease answer in pure English, pure Tagalog, or Taglish"
         )
         
         if not form:
@@ -337,138 +338,130 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
         meta_payload = {
             "admin_email": admin_email,
             "form_id": form_id,
-            "title": "Land Public Transportation Feedback Form",
-            "description": "Please share your experience with public transportation services.",
-            "include_demographics": True,  # Enable standard demographics
+            "title": "Land Public Transportation Service Quality Survey",
+            "description": "PART 1: Demographics | PART 2: Service Quality Evaluation (SERVQUAL)\nPlease answer in pure English, pure Tagalog, or Taglish",
+            "include_demographics": True,
             "allow_multiple_responses": True,
             "reach_out_contact": "",
         }
         conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
         
-        # Step 3: Create default questions covering all 5 SERVQUAL dimensions
+        # Step 3: Create comprehensive demographic and SERVQUAL questions
         questions = [
+            # ════════════════════════════════════════════════════
+            # PART 1: DEMOGRAPHICS (Questions 1-6)
+            # ════════════════════════════════════════════════════
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How would you rate your overall experience?",
-                "q_type": "Rating (Likert)",
-                "options": [],
+                "prompt": "1. Age / Edad",
+                "q_type": "Multiple Choice",
+                "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"],
                 "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Very Unsatisfied",
-                "scale_label_high": "Very Satisfied",
+                "is_demographic": True,
+                "enable_sentiment": False,
                 "servqual_dimension": None,
                 "sort_order": 1,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How would you rate the cleanliness of the vehicle?",
-                "q_type": "Rating (Likert)",
-                "options": [],
+                "prompt": "2. Gender / Kasarian",
+                "q_type": "Multiple Choice",
+                "options": ["Male (Lalaki)", "Female (Babae)", "Prefer not to say (Mas pinipiling huwag sabihin)"],
                 "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Very Dirty",
-                "scale_label_high": "Very Clean",
-                "servqual_dimension": "Tangibles",
+                "is_demographic": True,
+                "enable_sentiment": False,
+                "servqual_dimension": None,
                 "sort_order": 2,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How reliable was the schedule/timeliness?",
-                "q_type": "Rating (Likert)",
-                "options": [],
+                "prompt": "3. Occupational Status / Katayuan sa Trabaho",
+                "q_type": "Multiple Choice",
+                "options": ["Student (Estudyante)", "Employee / Self-employed (Empleyado / may sariling pinagkikitaan)", "Employer / Business-owner (May-ari ng Negosyo)", "Unemployed (Walang trabaho)"],
                 "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Very Unreliable",
-                "scale_label_high": "Very Reliable",
-                "servqual_dimension": "Reliability",
+                "is_demographic": True,
+                "enable_sentiment": False,
+                "servqual_dimension": None,
                 "sort_order": 3,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How responsive was the driver to your needs?",
-                "q_type": "Rating (Likert)",
-                "options": [],
+                "prompt": "4. Monthly Allowance or Salary / Buwanang Sahod o Allowance",
+                "q_type": "Multiple Choice",
+                "options": ["Below / Mababa sa Php 5,000", "Php 5,001 - 10,000", "Php 10,001 - 20,000", "Php 20,001 - 30,000", "Php 30,001 - 40,000", "Php 40,001 - 50,000", "Above / Mataas sa Php 50,001"],
                 "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Not Responsive",
-                "scale_label_high": "Very Responsive",
-                "servqual_dimension": "Responsiveness",
+                "is_demographic": True,
+                "enable_sentiment": False,
+                "servqual_dimension": None,
                 "sort_order": 4,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How safe did you feel during the trip?",
-                "q_type": "Rating (Likert)",
-                "options": [],
+                "prompt": "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?",
+                "q_type": "Multiple Choice",
+                "options": ["Once a week (Isang beses sa isang linggo)", "2-3 times a week (2-3 beses sa isang linggo)", "4-5 times a week (4-5 beses sa isang linggo)", "Everyday (Araw-araw)"],
                 "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Very Unsafe",
-                "scale_label_high": "Very Safe",
-                "servqual_dimension": "Assurance",
+                "is_demographic": True,
+                "enable_sentiment": False,
+                "servqual_dimension": None,
                 "sort_order": 5,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How courteous was the driver?",
-                "q_type": "Rating (Likert)",
-                "options": [],
-                "is_required": True,
-                "is_demographic": False,
-                "enable_sentiment": True,
-                "scale_max": 5,
-                "scale_label_low": "Very Rude",
-                "scale_label_high": "Very Courteous",
-                "servqual_dimension": "Empathy",
-                "sort_order": 6,
-            },
-            {
-                "form_id": form_id,
-                "admin_email": admin_email,
-                "prompt": "What transport mode did you use?",
+                "prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan",
                 "q_type": "Multiple Choice",
-                "options": ["Bus", "Jeepney", "Tricycle", "E-trike", "Train (MRT/LRT)", "TNVS (Grab, etc.)", "Other"],
+                "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"],
                 "is_required": True,
                 "is_demographic": True,
                 "enable_sentiment": False,
                 "servqual_dimension": None,
-                "sort_order": 7,
+                "sort_order": 6,
             },
-            # Open-ended questions with SERVQUAL dimensions for detailed feedback
+            
+            # ════════════════════════════════════════════════════
+            # PART 2: SERVQUAL SERVICE QUALITY EVALUATION
+            # ════════════════════════════════════════════════════
+            
+            # Dimension 1: Tangibles (Physical appearance and comfort)
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Tell us about the vehicle condition and facilities (cleanliness, comfort, etc.)",
+                "prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)",
                 "q_type": "Paragraph",
                 "options": [],
-                "is_required": False,
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Tangibles",
+                "sort_order": 7,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": True,
                 "is_demographic": False,
                 "enable_sentiment": True,
                 "servqual_dimension": "Tangibles",
                 "sort_order": 8,
             },
+            
+            # Dimension 2: Reliability (Dependability and smooth service)
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How would you describe your experience with schedule reliability and wait times?",
+                "prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)",
                 "q_type": "Paragraph",
                 "options": [],
-                "is_required": False,
+                "is_required": True,
                 "is_demographic": False,
                 "enable_sentiment": True,
                 "servqual_dimension": "Reliability",
@@ -477,50 +470,106 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "What could the driver or staff do to better address your needs?",
+                "prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)",
                 "q_type": "Paragraph",
                 "options": [],
-                "is_required": False,
+                "is_required": True,
                 "is_demographic": False,
                 "enable_sentiment": True,
-                "servqual_dimension": "Responsiveness",
+                "servqual_dimension": "Reliability",
                 "sort_order": 10,
             },
+            
+            # Dimension 3: Responsiveness (Promptness and communication)
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "How safe do you feel using this service? Any safety concerns?",
+                "prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)",
                 "q_type": "Paragraph",
                 "options": [],
-                "is_required": False,
+                "is_required": True,
                 "is_demographic": False,
                 "enable_sentiment": True,
-                "servqual_dimension": "Assurance",
+                "servqual_dimension": "Responsiveness",
                 "sort_order": 11,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Tell us about your experience with the politeness and helpfulness of staff or driver.",
+                "prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)",
                 "q_type": "Paragraph",
                 "options": [],
-                "is_required": False,
+                "is_required": True,
                 "is_demographic": False,
                 "enable_sentiment": True,
-                "servqual_dimension": "Empathy",
+                "servqual_dimension": "Responsiveness",
                 "sort_order": 12,
+            },
+            
+            # Dimension 4: Assurance (Safety, security, and competence)
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Assurance",
+                "sort_order": 13,
             },
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Any other comments or suggestions?",
+                "prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Assurance",
+                "sort_order": 14,
+            },
+            
+            # Dimension 5: Empathy (Caring and individualized attention)
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Empathy",
+                "sort_order": 15,
+            },
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)",
+                "q_type": "Paragraph",
+                "options": [],
+                "is_required": True,
+                "is_demographic": False,
+                "enable_sentiment": True,
+                "servqual_dimension": "Empathy",
+                "sort_order": 16,
+            },
+            
+            # Optional overall feedback
+            {
+                "form_id": form_id,
+                "admin_email": admin_email,
+                "prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi",
                 "q_type": "Paragraph",
                 "options": [],
                 "is_required": False,
                 "is_demographic": False,
                 "enable_sentiment": True,
                 "servqual_dimension": None,
-                "sort_order": 13,
+                "sort_order": 17,
             },
         ]
         

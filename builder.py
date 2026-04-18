@@ -195,27 +195,97 @@ st.markdown("""
         top: 1rem;
         right: 1rem;
     }
+            
 
-    /* 📱 RESPONSIVE MEDIA QUERIES 📱 */
+/* 📱 RESPONSIVE MEDIA QUERIES 📱 */
     @media screen and (max-width: 768px) {
-        .premium-header {
-            padding: 1.5rem 1.2rem !important;
+        .premium-header { padding: 1.5rem 1.2rem !important; }
+        .premium-header h1 { font-size: 1.6rem !important; }
+        .premium-header p { font-size: 0.9rem !important; }
+        .custom-link-card { padding: 0.8rem 1rem !important; }
+        .custom-link-url { font-size: 0.85rem !important; }
+        .form-cards-grid { grid-template-columns: 1fr; }
+
+        [data-testid="stHorizontalBlock"]:has(button[key*="rename_"]) button {
+            padding: 5px !important;
+            min-height: 35px !important;
         }
-        .premium-header h1 {
-            font-size: 1.6rem !important;
+            
+        /* 🔥 MOBILE FIX FOR QUESTION TOOLBAR (5-Column Row) 🔥 */
+        /* Tina-target natin ang 5 columns na WALANG selectbox para hindi masira yung Filter Bar sa taas */
+        div[data-testid="stColumns"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])),
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])) {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 4px !important;
+            padding-bottom: 5px !important;
         }
-        .premium-header p {
-            font-size: 0.9rem !important;
+
+        /* Tanggalin ang 100% width ni Streamlit sa loob ng columns na 'to */
+        div[data-testid="stColumns"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])) > div,
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])) > div {
+            min-width: 0 !important;
+            width: auto !important;
+            flex: 0 0 auto !important; 
         }
-        .custom-link-card {
-            padding: 0.8rem 1rem !important;
+
+        /* 1. Checkbox (Unang Column) -> Hahayaan nating humaba para itulak yung buttons sa kanan */
+        div[data-testid="stColumns"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])) > div:nth-child(1),
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5):last-child):not(:has(div[data-baseweb="select"])) > div:nth-child(1) {
+            flex: 1 1 auto !important;
+            padding-top: 10px !important; /* I-align ng konti pababa para pumantay sa buttons */
         }
-        .custom-link-url {
-            font-size: 0.85rem !important;
+        
+        /* 1. Force the parent container to allow wrapping and row direction */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child), 
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            flex-direction: row !important;
+            gap: 10px !important;
         }
-        .form-cards-grid {
-            grid-template-columns: 1fr;
+
+        /* 2. KILL STREAMLIT'S DEFAULT 100% WIDTH ON COLUMNS (The Culprit!) */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child) > div[data-testid="column"], 
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) > div[data-testid="column"] {
+            min-width: 0 !important; 
+            width: auto !important;
         }
+
+        /* 3. FORM NAME BUTTON (Col 2) -> Pop to top row, full width */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child) > div:nth-child(2),
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) > div:nth-child(2) {
+            order: 1 !important; 
+            flex: 0 0 100% !important; 
+            min-width: 100% !important;
+            margin-bottom: 5px !important;
+        }
+
+        /* 4. CHECKBOX (Col 1) -> Bottom left */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child) > div:nth-child(1),
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) > div:nth-child(1) {
+            order: 2 !important;
+            flex: 0 0 40px !important; 
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        /* 5. RENAME BUTTON (Col 3) -> Bottom middle */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child) > div:nth-child(3),
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) > div:nth-child(3) {
+            order: 3 !important;
+            flex: 1 1 auto !important; 
+        }
+
+        /* 6. DELETE BUTTON (Col 4) -> Bottom right */
+        div[data-testid="stHorizontalBlock"]:has(> div:nth-child(4):last-child) > div:nth-child(4),
+        div[data-testid="stColumns"]:has(> div:nth-child(4):last-child) > div:nth-child(4) {
+            order: 4 !important;
+            flex: 1 1 auto !important; 
+        }
+    }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -617,121 +687,97 @@ if not viewing_editor:
         fsb1, fsb2 = st.columns(2)
         with fsb1:
             if st.button("➕ Create Your First Form", type="primary", use_container_width=True):
-                st.session_state._show_create_form = True
+                dialog_create_form()  # 🔥 CALL DIALOG DIRECTLY
         with fsb2:
             st.markdown("")
-        
-        # Trigger dialogs
-        if st.session_state.get("_show_create_form"):
-            dialog_create_form()
-        
         st.stop()
 
-    # Header for form gallery
-    st.markdown("### Start A New Form")
-    if st.button("➕ Blank Form", use_container_width=True, type="primary"):
-        st.session_state._show_create_form = True
+    # ── CLEAN "START A NEW FORM" LAYOUT ──
+    top_col1, top_col2 = st.columns([4, 1.5], vertical_alignment="center")
     
+    with top_col1:
+        st.markdown("### ✨ Start a New Form")
+        st.markdown("<p style='color: #7c8db5; margin-top: -15px; margin-bottom: 0px;'>Create a brand new blank survey from scratch.</p>", unsafe_allow_html=True)
+        
+    with top_col2:
+        if st.button("➕ Create Blank Form", use_container_width=True, type="primary"):
+            dialog_create_form()
+            
     st.markdown("---")
     
-    # Initialize menu state for forms and selected forms for bulk delete
-    if "form_menu_open" not in st.session_state:
-        st.session_state.form_menu_open = {}
-    if "_selected_gallery_forms" not in st.session_state:
-        st.session_state._selected_gallery_forms = set()
+    # 🔥 FIX 1: Compute selection state dynamically BEFORE rendering the toolbar!
+    # This guarantees the count is perfectly synced with the checkboxes.
+    selected_forms = []
+    for idx, form in enumerate(available_forms):
+        chk_key = f"gallery_chk_{form['form_id']}_{idx}"
+        if st.session_state.get(chk_key, False):
+            selected_forms.append(form["form_id"])
+    
+    st.session_state._selected_gallery_forms = set(selected_forms)
+    n_selected = len(selected_forms)
+    all_checked = (n_selected == len(available_forms)) and (len(available_forms) > 0)
     
     # Header on the left, Bulk selection on the right
-    # Using vertical_alignment="bottom" (Streamlit 1.35+) to make the header perfectly level with the button
     toolbar_left, toolbar_right = st.columns([4, 1.5], vertical_alignment="bottom")
     
     with toolbar_left:
-        # Moved the header inside the left column
         st.markdown("### 📋 Your Recent Forms")
         
     with toolbar_right:
-        n_selected = len(st.session_state._selected_gallery_forms)
-        
         # 1. Selection count (Top)
         st.markdown(f"<div style='text-align:right; margin-bottom: 8px;'><span style='font-weight:700; color:#3b5bdb;'>{n_selected}</span> selected</div>", unsafe_allow_html=True)
         
         # 2. Select / Deselect All Button (Middle)
-        all_checked = len(st.session_state._selected_gallery_forms) == len(available_forms) and len(available_forms) > 0
         if st.button("☑ Select All" if not all_checked else "☐ Deselect All", use_container_width=True):
-            if not all_checked:
-                for form in available_forms:
-                    st.session_state._selected_gallery_forms.add(form["form_id"])
-                    st.session_state[f"gallery_chk_{form['form_id']}"] = True
-            else:
-                for form in available_forms:
-                    st.session_state._selected_gallery_forms.discard(form["form_id"])
-                    st.session_state[f"gallery_chk_{form['form_id']}"] = False
+            # 🔥 FIX 2: Updates the correct session_state keys (with the idx)
+            for idx, form in enumerate(available_forms):
+                chk_key = f"gallery_chk_{form['form_id']}_{idx}"
+                st.session_state[chk_key] = not all_checked 
             st.rerun()
             
         # 3. Delete Button (Appears Below when items are selected)
         if n_selected > 0:
             if st.button(f"🗑️ Delete ({n_selected})", use_container_width=True, type="primary"):
                 st.session_state._confirm_delete_multiple_forms = list(st.session_state._selected_gallery_forms)
-                st.rerun()
+                dialog_delete_multiple_forms_confirmation()
 
     st.markdown("<div style='margin-bottom: 1rem;'></div>", unsafe_allow_html=True)
     st.markdown("")
     
-    # Form gallery - one per row (inline)
+    num_cols = 2
+    cols = st.columns(num_cols)
+    
     for idx, form in enumerate(available_forms):
         form_id = form["form_id"]
-        
-        # Checkbox and form row together
-        chk_col, card_col = st.columns([0.15, 4])
-        
-        with chk_col:
-            is_checked = form_id in st.session_state._selected_gallery_forms
-            checked = st.checkbox("", key=f"gallery_chk_{form_id}", label_visibility="collapsed")
-            if checked and not is_checked:
-                st.session_state._selected_gallery_forms.add(form_id)
-                st.rerun()
-            elif not checked and is_checked:
-                st.session_state._selected_gallery_forms.discard(form_id)
-                st.rerun()
-        
-        with card_col:
-            # Layout: Form name button | Rename icon | Delete icon
-            form_title = form["title"]
-            
-            # Create three columns for name, rename, delete
-            name_col, rename_col, delete_col = st.columns([3, 0.5, 0.5])
-            
-            with name_col:
-                # Form name button - opens survey settings
-                if st.button(form_title, key=f"form_select_{form_id}", use_container_width=True):
+        form_title = form["title"]
+
+        with cols[idx % num_cols]:
+            with st.container(border=True):
+                
+                # 1. Main Button
+                if st.button(f"📄 {form_title}", key=f"form_select_{form_id}_{idx}", use_container_width=True, type="primary"):
                     set_current_form(form_id)
                     st.session_state.viewing_form_editor = True
                     st.rerun()
-            
-            with rename_col:
-                # Rename button - icon only
-                if st.button("✏️", key=f"rename_{form_id}", use_container_width=True, help="Rename form"):
-                    st.session_state._rename_form_id = form_id
-                    st.session_state._show_rename_form = True
-                    st.rerun()
-            
-            with delete_col:
-                # Delete button - icon only
-                if st.button("🗑️", key=f"delete_{form_id}", use_container_width=True, help="Delete form"):
-                    st.session_state._confirm_delete_form_id = form_id
-                    st.rerun()
-    
-    # Trigger dialogs
-    if st.session_state.get("_show_create_form"):
-        dialog_create_form()
-    elif st.session_state.get("_show_rename_form"):
-        dialog_rename_form()
-    elif st.session_state.get("_confirm_delete_multiple_forms"):
-        dialog_delete_multiple_forms_confirmation()
-    elif st.session_state.get("_confirm_delete_form_id"):
-        dialog_delete_form_confirmation()
+                
+                # 2. Secondary actions
+                chk_col, rename_col, delete_col = st.columns([1.2, 1, 1], vertical_alignment="center")
+
+                with chk_col:
+                    # 🔥 FIX 3: Simplified! We let Streamlit's session_state handle the checkbox value automatically.
+                    st.checkbox("Select", key=f"gallery_chk_{form_id}_{idx}")
+
+                with rename_col:
+                    if st.button("✏️", key=f"rename_{form_id}_{idx}", use_container_width=True):
+                        st.session_state._rename_form_id = form_id
+                        dialog_rename_form()
+
+                with delete_col:
+                    if st.button("🗑️", key=f"delete_{form_id}_{idx}", use_container_width=True):
+                        st.session_state._confirm_delete_form_id = form_id
+                        dialog_delete_form_confirmation()
     
     st.stop()
-
 # ══════════════════════════════════════════
 # FORM EDITOR (Show when editing a form)
 # ══════════════════════════════════════════
@@ -747,8 +793,6 @@ with btn_col2:
     if st.button("📊 Sentiment Dashboard", use_container_width=True):
         st.switch_page("dashboard.py")
 
-st.markdown("---")
-
 # Get current form details and display as title header
 current_form = next((f for f in available_forms if f["form_id"] == current_form_id), None)
 if current_form:
@@ -757,8 +801,6 @@ if current_form:
         <h2 style="margin: 0; color: #1a2e55; font-size: 1.8rem; font-weight: 700;">{current_form['title']}</h2>
     </div>
     """, unsafe_allow_html=True)
-
-st.markdown("---")
 
 # ══════════════════════════════════════════
 # SURVEY SETTINGS
@@ -1028,6 +1070,9 @@ if not st.session_state.preview_mode:
 # ══════════════════════════════════════════
 st.markdown("---")
 
+# 🔥 ADDED THE FILTER TITLE HERE
+st.markdown("#### 🔍 Filter Questions")
+
 # Compact filter bar
 fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])
 with fcol1:
@@ -1147,7 +1192,6 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False):
         for i in range(1, scale_max + 1):
             lbl = label_low if i == 1 and label_low else (label_high if i == scale_max and label_high else "&nbsp;")
             boxes += f'<div style="display:flex;flex-direction:column;flex:1;min-width:40px;align-items:center;"><div style="width:100%;padding:12px 0;border:1px solid #dde3ef;border-radius:4px;display:flex;justify-content:center;font-size:13px;color:#3b5bdb;font-weight:500;">{i}</div><div style="font-size:11px;color:#7c8db5;margin-top:5px;text-align:center;min-height:15px;font-weight:600;">{lbl}</div></div>'
-        # Added flex-wrap here for mobile responsiveness!
         return f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;width:100%; max-width:600px;">{boxes}</div>'
 
     display_num = q_num_label if q_num_label is not None else f"Q{idx + 1}"
@@ -1185,9 +1229,11 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False):
     elif q["q_type"] == "Paragraph":
         extra = '<div style="margin-top:16px;width:100%;border-bottom:1px dashed #b0bcd8;padding-bottom:24px;color:#7c8db5;font-size:13px;">Long answer text</div>'
 
-    border_style = "2px dashed #b0bcd8" if is_locked else "1px solid #dde3ef"
+    # 🔥 FIX: Tinanggal ang heavy solid borders para bumagay sa st.container natin
+    border_style = "2px dashed #b0bcd8" if is_locked else "none"
+    bg_style = "#fafbfc" if is_locked else "transparent"
 
-    html_str = f'<div style="background:#fff;border:{border_style};border-radius:8px;padding:14px;margin-bottom:4px;width:100%;box-shadow:0 1px 3px rgba(0,0,0,0.02);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span>{locked_badge}<span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
+    html_str = f'<div style="background:{bg_style};border:{border_style};border-radius:8px;padding:8px 4px;width:100%;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span>{locked_badge}<span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
     
     return html_str
 
@@ -1268,7 +1314,7 @@ else:
                     st.rerun()
         st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
 
-        # ══════════════════════════════════════════
+       # ══════════════════════════════════════════
         # PER-QUESTION ROWS
         # ══════════════════════════════════════════
         for idx, q in enumerate(visible_questions):
@@ -1278,43 +1324,49 @@ else:
             q_num_label = f"Q{idx + 1 + demo_offset}"
 
             if not is_editing:
-                st.markdown(get_card_html(idx, q, q_num_label=q_num_label), unsafe_allow_html=True)
-                
-                # NATIVE BUTTONS COLUMN LAYOUT
-                chk_col, up_col, down_col, spacer, edit_col, del_col = st.columns([0.5, 0.7, 0.7, 4.1, 1.5, 1.5], vertical_alignment="center")
+                # 🔥 WRAP THE WHOLE QUESTION IN A NATIVE CARD CONTAINER
+                with st.container(border=True):
+                    
+                    st.markdown(get_card_html(idx, q, q_num_label=q_num_label), unsafe_allow_html=True)
+                    
+                    # Linya na naghihiwalay sa question at sa toolbar buttons
+                    st.markdown("<hr style='margin: 1rem 0 0.8rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
+                    
+                    # NATIVE BUTTONS COLUMN LAYOUT (Inayos natin para magmukhang toolbar!)
+                    chk_col, up_col, down_col, edit_col, del_col = st.columns([2.5, 0.8, 0.8, 1, 1], vertical_alignment="center")
 
-                with chk_col:
-                    checked = st.checkbox("", value=is_checked, key=f"chk_{qid_str}", label_visibility="collapsed")
-                    if checked and not is_checked:
-                        st.session_state.selected_ids.add(qid_str)
-                        st.rerun()
-                    elif not checked and is_checked:
-                        st.session_state.selected_ids.discard(qid_str)
-                        st.rerun()
+                    with chk_col:
+                        checked = st.checkbox("Select", value=is_checked, key=f"chk_{qid_str}")
+                        if checked and not is_checked:
+                            st.session_state.selected_ids.add(qid_str)
+                            st.rerun()
+                        elif not checked and is_checked:
+                            st.session_state.selected_ids.discard(qid_str)
+                            st.rerun()
 
-                with up_col:
-                    if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0):
-                        move_question_order(visible_questions, idx, "up")
+                    with up_col:
+                        if st.button("⬆️", key=f"up_{qid_str}", help="Move Up", disabled=filtered or idx == 0, use_container_width=True):
+                            move_question_order(visible_questions, idx, "up")
 
-                with down_col:
-                    if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1):
-                        move_question_order(visible_questions, idx, "down")
+                    with down_col:
+                        if st.button("⬇️", key=f"down_{qid_str}", help="Move Down", disabled=filtered or idx == len(visible_questions) - 1, use_container_width=True):
+                            move_question_order(visible_questions, idx, "down")
 
-                with edit_col:
-                    if st.button("✏️ EDIT", key=f"edit_btn_{qid_str}", use_container_width=True):
-                        st.session_state.editing_id = qid_str
-                        st.rerun()
+                    with edit_col:
+                        if st.button("✏️", key=f"edit_btn_{qid_str}", use_container_width=True, help="Edit"):
+                            st.session_state.editing_id = qid_str
+                            st.rerun()
 
-                with del_col:
-                    if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True):
-                        st.session_state._confirm_del_qid = q["id"]
-                        st.session_state._confirm_del_qid_str = qid_str
-
-                st.markdown("<div style='margin-bottom:1.5rem;'></div>", unsafe_allow_html=True)
+                    with del_col:
+                        if st.button("🗑️", key=f"del_btn_{qid_str}", use_container_width=True, help="Delete"):
+                            st.session_state._confirm_del_qid = q["id"]
+                            st.session_state._confirm_del_qid_str = qid_str
 
             else:
-                st.markdown(f"**✏️ Editing {q_num_label}**")
-                with st.container():
+                # Pag ine-edit ang question, nakapaloob rin sa Card para pareho ang hitsura
+                with st.container(border=True):
+                    st.markdown(f"**✏️ Editing {q_num_label}**")
+                    
                     ec1, ec2 = st.columns([3, 2])
                     with ec1:
                         e_prompt = st.text_input("Edit question", value=q["prompt"], key=f"ep_{qid_str}")
@@ -1430,13 +1482,7 @@ else:
 # DIALOG TRIGGERS (when editing a form)
 # ══════════════════════════════════════════
 # Trigger dialogs (only one at a time via if/elif)
-if st.session_state.get("_show_rename_form"):
-    dialog_rename_form()
-elif st.session_state.get("_confirm_delete_multiple_forms"):
-    dialog_delete_multiple_forms_confirmation()
-elif st.session_state.get("_confirm_delete_form_id"):
-    dialog_delete_form_confirmation()
-elif st.session_state.get("_show_demo_type_dialog"):
+if st.session_state.get("_show_demo_type_dialog"):
     dialog_demographic_invalid_type()
 elif st.session_state.get("_confirm_del_qid") is not None:
     dialog_delete_single_question()

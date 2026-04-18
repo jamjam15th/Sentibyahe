@@ -1,5 +1,8 @@
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
+from datetime import datetime, timedelta, timezone
+import uuid
+import hashlib
 
 # ── 1. Init ──
 conn = st.connection("supabase", type=SupabaseConnection)
@@ -113,49 +116,52 @@ footer                         { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-from datetime import datetime, timedelta, timezone
 
 SESSION_TIMEOUT_MINUTES = 30  # ⏱️ change if needed
 
-import uuid
+def get_device_id():
+    """Generates a fingerprint based on the user's browser agent."""
+    user_agent = st.context.headers.get("User-Agent", "unknown")
+    return hashlib.md5(user_agent.encode()).hexdigest()
 
 def set_session(user):
     session_id = str(uuid.uuid4())
+    device_id = get_device_id()
 
     st.session_state.logged_in = True
-    st.session_state.local_login = True
     st.session_state.session_id = session_id
-    st.session_state.user_email = user.email or ""
-
+    st.session_state.device_id = device_id
+    st.session_state.user_email = user.email
+    
     metadata = user.user_metadata or {}
     st.session_state.first_name = metadata.get("first_name", "Admin")
-    st.session_state.last_name  = metadata.get("last_name", "")
+    st.session_state.last_name = metadata.get("last_name", "")
     st.session_state.login_time = datetime.now(timezone.utc)
 
-    # ✅ on_conflict ensures only ONE row per user, never overwrites another user
+    # Upsert to Supabase
     conn.client.table("active_sessions").upsert({
-        "user_email": st.session_state.user_email,
+        "user_email": user.email,
         "session_id": session_id,
+        "device_id": device_id,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }, on_conflict="user_email").execute()
 
 def is_valid_session():
+    """Checks if the current session matches the one in the DB."""
     if "session_id" not in st.session_state:
-        return False
-
+        return True # Skip check if state isn't hydrated yet
+        
     res = conn.client.table("active_sessions") \
         .select("session_id, device_id") \
         .eq("user_email", st.session_state.user_email) \
-        .limit(1) \
         .execute()
 
-    if not res.data:
-        return False
-
-    return (
-        res.data[0]["session_id"] == st.session_state.session_id and
-        res.data[0].get("device_id") == st.session_state.get("device_id")
-    )
+    if res.data:
+        db_session = res.data[0]
+        # Check if another device/browser took over the session
+        if db_session["session_id"] != st.session_state.session_id:
+            return False
+    return True
 
 def clear_session():
     try:
@@ -190,59 +196,50 @@ if "logged_in" not in st.session_state:
 if "local_login" not in st.session_state:
     st.session_state.local_login = False
 
-# ✅ Restore session on refresh
+# Initialize login states
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+# ── SESSION RECOVERY (The Fix) ──
 if not st.session_state.get("logged_in", False):
     try:
-        supabase_session = conn.client.auth.get_session()
-        if supabase_session and supabase_session.user:
-            user  = supabase_session.user
-            email = user.email
-
-            current_device = hashlib.md5(
-                st.context.headers.get("User-Agent", "unknown").encode()
-            ).hexdigest()
-
-            res = conn.client.table("active_sessions") \
-                .select("session_id, device_id") \
-                .eq("user_email", email) \
-                .limit(1) \
-                .execute()
-
-            if res.data and res.data[0].get("device_id") == current_device:
-                metadata = user.user_metadata or {}
-                st.session_state.logged_in   = True
-                st.session_state.local_login = True
-                st.session_state.session_id  = res.data[0]["session_id"]
-                st.session_state.device_id   = current_device
-                st.session_state.user_email  = email
-                st.session_state.first_name  = metadata.get("first_name", "Admin")
-                st.session_state.last_name   = metadata.get("last_name", "")
-                st.session_state.login_time  = datetime.now(timezone.utc)
-                st.rerun()
+        sb_auth = conn.client.auth.get_session()
+        if sb_auth and sb_auth.user:
+            user = sb_auth.user
+            res = conn.client.table("active_sessions").select("*").eq("user_email", user.email).execute()
+            
+            if res.data:
+                db_data = res.data[0]
+                if db_data["device_id"] == get_device_id():
+                    # 1. Restore the data
+                    metadata = user.user_metadata or {}
+                    st.session_state.logged_in = True
+                    st.session_state.session_id = db_data["session_id"]
+                    st.session_state.user_email = user.email
+                    st.session_state.first_name = metadata.get("first_name", "Admin")
+                    st.session_state.last_name = metadata.get("last_name", "")
+                    st.session_state.login_time = datetime.now(timezone.utc)
+                    
+                    # 2. IMPORTANT: Stay on the current page
+                    # This ensures if you were on 'builder', you stay on 'builder'
+                    st.rerun() 
     except Exception:
         pass
 
-try:
-    if st.session_state.get("logged_in", False):
-        if not is_valid_session():
+# ── SECURITY CHECKS ──
+if st.session_state.logged_in:
+    if not is_valid_session():
+        clear_session()
+        st.error("Logged in on another device.")
+        st.rerun()
+        
+    # Auto-logout if inactive (Optional)
+    if "login_time" in st.session_state:
+        elapsed = datetime.now(timezone.utc) - st.session_state.login_time
+        if elapsed > timedelta(minutes=30):
             clear_session()
-            st.warning("Naka-login na ang account mo sa ibang device.")
+            st.warning("Session expired.")
             st.rerun()
-
-        if is_session_expired():
-            clear_session()
-            st.warning("Session expired. Please log in again.")
-            st.rerun()
-
-        st.session_state.login_time = datetime.now(timezone.utc)
-
-    else:
-        st.session_state.logged_in   = False
-        st.session_state.local_login = False
-
-except Exception:
-    st.session_state.logged_in   = False
-    st.session_state.local_login = False
 
 # ── 5. Pages ──
 login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
