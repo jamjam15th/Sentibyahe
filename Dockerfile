@@ -14,7 +14,7 @@ COPY requirements.txt .
 # Create wheels for all dependencies (this pre-compiles them)
 RUN pip install --user --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --user --no-cache-dir --no-warn-script-location \
-    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
     -r requirements.txt
 
 # ── RUNTIME STAGE ──
