@@ -1,25 +1,52 @@
-# Use a lightweight Python image
-FROM python:3.11-slim
+# ── BUILDER STAGE ──
+FROM python:3.11-slim as builder
 
-# Set the working directory
 WORKDIR /app
 
-# Install only the essential system dependencies
-RUN apt-get update && apt-get install -y \
+# Install only essential build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Create wheels for all dependencies (this pre-compiles them)
+RUN pip install --user --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --user --no-cache-dir --no-warn-script-location \
+    --index-url https://download.pytorch.org/whl/cpu \
+    -r requirements.txt
+
+# ── RUNTIME STAGE ──
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy your code into the container
+# Copy pre-built packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Set PATH for user-installed packages
+ENV PATH=/root/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Copy application code
 COPY . .
 
-# Install Python requirements
-# Added --no-cache-dir to save space and prevent OOM errors
-RUN pip install --no-cache-dir -r requirements.txt
+# Ensure .streamlit config is used
+ENV STREAMLIT_CONFIG_DIR=/app/.streamlit
 
-# Tell Streamlit to run on port 8080
+# Expose port
 EXPOSE 8080
 
 # Run the app
-CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "router.py", \
+     "--server.port=8080", \
+     "--server.address=0.0.0.0", \
+     "--server.headless=true"]
