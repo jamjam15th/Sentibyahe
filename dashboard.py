@@ -1007,13 +1007,11 @@ def render_dashboard():
             has_qs = False
             if isinstance(qs, dict):
                 for q_data in qs.values():
-                    if isinstance(q_data, dict) and q_data.get("enable_sentiment") is not False:
+                    if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
                         s = str(q_data.get("sentiment", "")).upper().strip()
                         if s in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
                             has_qs = True
                             all_s.append(s)
-            if not has_qs and rl and rl != "PENDING":
-                all_s.append(rl)
         tot = len(all_s)
         pos = all_s.count("POSITIVE")
         neu = all_s.count("NEUTRAL")
@@ -1035,7 +1033,7 @@ def render_dashboard():
             qs = row.get("question_sentiments", {})
             if isinstance(qs, dict):
                 for q_data in qs.values():
-                    if isinstance(q_data, dict) and q_data.get("enable_sentiment") is not False:
+                    if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
                         s = str(q_data.get("sentiment", "")).upper().strip()
                         d = q_data.get("dimension")
                         if s in ["POSITIVE", "NEUTRAL", "NEGATIVE"] and d in data:
@@ -1247,7 +1245,7 @@ def render_dashboard():
                 qs = row.get("question_sentiments", {})
                 if isinstance(qs, dict):
                     for q_data in qs.values():
-                        if isinstance(q_data, dict) and q_data.get("enable_sentiment") is not False:
+                        if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
                             s = str(q_data.get("sentiment", "")).upper().strip()
                             d = q_data.get("dimension")
                             if s in ["POSITIVE", "NEUTRAL", "NEGATIVE"] and (not d or d not in dimension_sentiment_data):
@@ -1541,7 +1539,7 @@ def render_dashboard():
                     has_qs = False
                     if isinstance(qs, dict):
                         for q_data in qs.values():
-                            if isinstance(q_data, dict) and q_data.get("enable_sentiment") is not False:
+                            if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
                                 s = str(q_data.get("sentiment", "")).upper().strip()
                                 if s in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
                                     has_qs = True
@@ -1552,13 +1550,6 @@ def render_dashboard():
                                             all_confidence_scores.append({"sentiment": s, "confidence": float(conf)})
                                         except Exception:
                                             pass
-                    if not has_qs and rl and rl != "PENDING":
-                        all_sentiments_list.append(rl)
-                        if pd.notna(rl_score):
-                            try:
-                                all_confidence_scores.append({"sentiment": rl, "confidence": float(rl_score)})
-                            except Exception:
-                                pass
 
                 sentiment_counts = {
                     "POSITIVE": all_sentiments_list.count("POSITIVE"),
@@ -1716,7 +1707,7 @@ def render_dashboard():
                         qs = row.get("question_sentiments", {})
                         if isinstance(qs, dict):
                             for q_id_k, q_data in qs.items():
-                                if isinstance(q_data, dict) and q_data.get("enable_sentiment") is not False:
+                                if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
                                     s = q_data.get("sentiment")
                                     if s:
                                         su = str(s).upper().strip()
