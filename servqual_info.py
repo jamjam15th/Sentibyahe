@@ -5,7 +5,7 @@ from components import inject_css, render_dimension_cards
 # ══════════════════════════════════════════
 # PAGE CONFIG & CSS
 # ══════════════════════════════════════════
-st.set_page_config(page_title="SERVQUAL Info", page_icon="ℹ️", layout="wide")
+st.set_page_config(page_title="SERVQUAL Guide", page_icon="ℹ️", layout="wide")
 
 st.session_state["current_page"] = "servqual_info"
 st.session_state["_prev_page"] = "servqual_info"
@@ -14,6 +14,17 @@ st.session_state["_prev_page"] = "servqual_info"
 # Must go BEFORE Supabase connections and inject_css()
 st.markdown("""
 <style>
+    /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+            
     /* 1. KEEP SIDEBAR ON TOP OF LOADER */
     [data-testid="stSidebar"], 
     [data-testid="stSidebarCollapsedControl"] {

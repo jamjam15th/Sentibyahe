@@ -16,6 +16,17 @@ st.session_state["_prev_page"] = "settings"
 # Must go BEFORE Supabase connections and main CSS
 st.markdown("""
 <style>
+    /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+
     /* 1. KEEP SIDEBAR ON TOP OF LOADER */
     [data-testid="stSidebar"], 
     [data-testid="stSidebarCollapsedControl"] {

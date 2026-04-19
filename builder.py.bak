@@ -30,7 +30,7 @@ def demographic_qtype_ok(q_type: str | None) -> bool:
 # ══════════════════════════════════════════
 # PAGE CONFIG & CSS
 # ══════════════════════════════════════════
-st.set_page_config(page_title="Form Builder", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Create Form", page_icon="🛠️", layout="wide")
 inject_css()
 
 # ── Force native Streamlit text colors to be dark & Add Premium Header ──
@@ -416,7 +416,7 @@ def update_meta():
 st.markdown("""
 <div class="premium-header">
     <div>
-        <h1>🛠️ Form Builder</h1>
+        <h1>🛠️ Create Form</h1>
         <p>Design your surveys and manage questions — one form at a time.</p>
     </div>
 </div>

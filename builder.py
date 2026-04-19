@@ -31,7 +31,7 @@ def demographic_qtype_ok(q_type: str | None) -> bool:
 # ══════════════════════════════════════════
 # PAGE CONFIG & CSS
 # ══════════════════════════════════════════
-st.set_page_config(page_title="Form Builder", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Create Form", page_icon="🛠️", layout="wide")
 
 # 🔥 DYNAMIC NUCLEAR LOADER 🔥
 def render_nuclear_loader(duration="2.5s", text="Loading Workspace..."):
@@ -128,6 +128,17 @@ render_nuclear_loader(load_duration, load_text)
 # ── Force native Streamlit text colors to be dark & Add Premium Header ──
 st.markdown("""
 <style>
+    # /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+            
     /* Fix invisible text in Expanders */
     [data-testid="stExpander"] summary p {
         color: #1a2e55 !important;
@@ -739,7 +750,7 @@ def update_meta():
 st.markdown("""
 <div class="premium-header">
     <div>
-        <h1>🛠️ Form Builder</h1>
+        <h1>🛠️ Create Form</h1>
         <p>Design your surveys and manage questions — one form at a time.</p>
     </div>
 </div>
@@ -1192,7 +1203,7 @@ if not st.session_state.preview_mode and not is_sample_form:
 
 
 # 🔥 ADDED THE FILTER TITLE HERE
-st.markdown("#### 🔍 Filter Questions")
+st.markdown("#### 🔍 Filter")
 
 # Compact filter bar
 fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])

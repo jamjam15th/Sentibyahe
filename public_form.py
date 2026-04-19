@@ -91,6 +91,10 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     color: var(--navy) !important; font-weight: 600 !important;
 }
 
+.st-e2 {
+    background-color: var(--navy) !important;
+}
+
 /* ── HORIZONTAL RADIO (Likert Scale Squares) ── */
 [data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] {
     display: flex !important;
@@ -148,18 +152,57 @@ html, body, p, div, span, a, button, label, input, textarea, select {
 }
 
 /* ── INPUTS ── */
-[data-testid="stTextInput"] input,
-[data-testid="stTextArea"] textarea {
-  border: none !important;
-  border-bottom: 1.5px solid rgba(84,119,146,0.35) !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+/* 1. Strip the default Streamlit wrapper borders and glow */
+[data-testid="stTextInput"] div[data-baseweb="base-input"],
+[data-testid="stTextArea"] div[data-baseweb="textarea"] {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 10px !important;
 }
 
+[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within,
+[data-testid="stTextArea"] div[data-baseweb="textarea"]:focus-within {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 10px !important;
+}
+
+/* 2. Apply our custom bottom border directly to the input elements */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {
+    border: 1px solid rgba(84,119,146,0.35) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    transition: border-color 0.2s ease !important;
+    border-radius: 10px !important;
+}
+
+/* 3. The clean Blue Focus State */
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {
+    border: 1px solid var(--navy) !important; 
+    box-shadow: none !important; 
+    outline: none !important;
+    border-radius: 10px !important;
+}
+
+/* This applies the blue color and strips away Streamlit's default red glow when typing */
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {
+  border-bottom: 1px solid var(--navy) !important; 
+  box-shadow: none !important; 
+  outline: none !important;
+}
+            
 /* ── SUBMIT BUTTON ── */
 div.stFormSubmitButton > button {
   background: var(--navy) !important; color: var(--gold) !important;
   border-radius: 6px !important; padding: .65rem 2.2rem !important;
+}
+
+.st-emotion-cache-1cl4umz {
+    border: none !important;
 }
 
 </style>
@@ -423,6 +466,10 @@ if submitted_key not in st.session_state:
 if just_submitted_key not in st.session_state:
     st.session_state[just_submitted_key] = False
 
+# Add the counter initialization here!
+if "form_reset_counter" not in st.session_state:
+    st.session_state.form_reset_counter = 0
+
 # ── 3. HEADER ──
 st.markdown(f"""
 <div class="gf-header">
@@ -457,12 +504,14 @@ elif (not allow_multiple_responses) and (
         st.info("If you need to follow up, please contact the survey organizer.")
 elif len(form_schema) > 0:
     question_map = {} 
-    with st.form("public_survey_form", clear_on_submit=True):
+    with st.form("public_survey_form", clear_on_submit=False):
         user_answers = {}
         for i, q in enumerate(form_schema):
             q_type, prompt, is_req = q["q_type"], q["prompt"], q.get("is_required", False)
             req_star = '<span style="color:#d63031;">*</span>' if is_req else ""
-            key = f"ans_{q.get('id', f'demo_{i}')}"
+            
+            # Update the key to include the counter!
+            key = f"ans_{q.get('id', f'demo_{i}')}_{st.session_state.form_reset_counter}"
 
             unique_prompt = prompt
             counter = 1
@@ -662,6 +711,10 @@ elif len(form_schema) > 0:
                     
                     st.session_state[submitted_key] = True
                     st.session_state[just_submitted_key] = True
+                    
+                    # Increment the counter right before the rerun!
+                    st.session_state.form_reset_counter += 1
+                    
                     st.rerun()
             except Exception as e:
                 st.error(f"⚠️ Error saving response: {e}")

@@ -67,7 +67,7 @@ footer                         { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
   padding: 0 0 2rem 0 !important; background: var(--navy) !important; overflow-y: auto !important;
 }
-[data-testid="stSidebar"] * { color: var(--sand) !important; }
+[data-testid="stSidebar"] * { color: white !important; }
 
 .sidebar-brand { padding: 1.6rem 1.4rem 1.2rem; border-bottom: 1px solid rgba(255,197,112,0.12); margin-bottom: .5rem; }
 .sidebar-brand .brand-badge {
@@ -242,13 +242,13 @@ if st.session_state.logged_in:
             st.rerun()
 
 # ── 5. Pages ──
-login_page       = st.Page("login.py",              title="Log in",              icon="🔐")
-dashboard_page   = st.Page("dashboard.py",          title="Sentiment Dashboard", icon="📊")
-builder_page     = st.Page("builder.py",            title="Form Builder",        icon="🛠️")
+login_page       = st.Page("login.py",              title="Log in",              icon=":material/login:")
+dashboard_page   = st.Page("dashboard.py",          title="Sentiment Dashboard", icon=":material/bar_chart:")
+builder_page     = st.Page("builder.py",            title="Create Form",         icon=":material/add_circle:")
+servqual_page    = st.Page("servqual_info.py",      title="SERVQUAL Guide",      icon=":material/info:")
+settings_page    = st.Page("settings.py",           title="Settings",            icon=":material/settings:")
+public_form_page = st.Page("public_form.py",        title="Take Survey",         icon=":material/assignment:")
 # testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
-servqual_page    = st.Page("servqual_info.py",      title="SERVQUAL Info",       icon="ℹ️")
-settings_page    = st.Page("settings.py",           title="Settings",            icon="⚙️")
-public_form_page = st.Page("public_form.py",        title="Take Survey",         icon="📋")
 
 # ── 6. Router ──
 if "form_id" in st.query_params:
@@ -265,8 +265,8 @@ elif st.session_state.get("logged_in", False):
     with st.sidebar:
         st.html("""
         <div class="sidebar-brand">
-          <h2 style="margin-bottom: 5px;">🚐 Sentibyahe</h2>
-          <p style="font-size: 0.85rem; color: #7c8db5; margin-top: 0; font-style: italic;">
+          <h2 style="margin-bottom: 5px;">Sentibyahe</h2>
+          <p style="font-size: 0.85rem; color: var(--sand) !important; margin-top: 0; font-style: italic;">
             AI-Powered Sentiment Surveys
           </p>
         </div>

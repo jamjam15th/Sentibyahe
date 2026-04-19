@@ -273,7 +273,7 @@ with left_col:
     <div class="left-container">
       <div class="acc-bar"></div>
       <div class="text-container">
-        <div class="lp-badge"><span>🚌 Land Public Transportation Analytics</span></div>
+        <div class="lp-badge"><span>Land Public Transportation Analytics</span></div>
         <h1 class="lp-h1">Understanding the<br><em>Voice</em> of Every<br>Respondent</h1>
         <p class="lp-desc">Real-time sentiment analysis for Land Public Transportation — supporting planners, operators, and policymakers with data-driven insights.</p>
       </div>

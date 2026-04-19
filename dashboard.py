@@ -34,6 +34,40 @@ st.set_page_config(
 # Must go BEFORE Supabase connections and main CSS
 st.markdown("""
 <style>
+    # /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+
+        /* Prevent fragment re-run dimming */
+    [data-testid="stFragment"] {
+        opacity: 1 !important;
+        transition: none !important;
+    }
+
+    /* Target the specific overlay Streamlit adds during fragment refresh */
+    [data-testid="stFragment"] > div {
+        opacity: 1 !important;
+    }
+
+    /* Kill the loading/dimming overlay on fragments */
+    [data-stale="true"] {
+        opacity: 1 !important;
+        pointer-events: none;
+    }
+
+    /* Streamlit uses this class during re-runs */
+    .stSpinner,
+    [data-testid="stFragment"] [data-stale] {
+        opacity: 1 !important;
+    }
+            
     /* 1. KEEP SIDEBAR ON TOP OF LOADER */
     [data-testid="stSidebar"], 
     [data-testid="stSidebarCollapsedControl"] {
@@ -474,9 +508,6 @@ st.markdown("""
 btn_col1, btn_col2, btn_col3 = st.columns([0.15, 0.7, 0.15])
 with btn_col1:
     if st.button("← Back", use_container_width=True):
-        st.session_state._trigger_transition_loader = True
-        st.session_state._transition_loader_text = "Loading Workspace..."
-        st.session_state._page_initial_load = False
         st.switch_page("builder.py")
 
 st.markdown("<div style='margin:0.5rem 0'></div>", unsafe_allow_html=True)
