@@ -913,17 +913,19 @@ sentiment_dimension_descriptions = {
 # ══════════════════════════════════════════
 @st.fragment
 def render_dashboard():
-    # ── Run sentiment analysis for any pending rows BEFORE loading display data ──
-    # These calls are cheap (count-only first), and only do real work when needed.
-    run_pending_response_sentiment(admin_email, current_form_id)
-    run_pending_question_sentiment(admin_email, current_form_id)
+    # ── Show loading indicator while processing sentiment analysis ──
+    with st.spinner("⏳ Processing sentiment analysis... This may take a moment."):
+        # Run sentiment analysis for any pending rows BEFORE loading display data
+        # These calls are cheap (count-only first), and only do real work when needed.
+        run_pending_response_sentiment(admin_email, current_form_id)
+        run_pending_question_sentiment(admin_email, current_form_id)
 
-    df_raw = fetch_dashboard_data(admin_email, current_form_id)
-    question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
-    form_schema_full = fetch_form_questions_schema(admin_email, current_form_id)
-    form_schema = form_schema_full.get("by_prompt", {})
+        df_raw = fetch_dashboard_data(admin_email, current_form_id)
+        question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
+        form_schema_full = fetch_form_questions_schema(admin_email, current_form_id)
+        form_schema = form_schema_full.get("by_prompt", {})
 
-    df_raw = recalculate_servqual_columns(df_raw, form_schema)
+        df_raw = recalculate_servqual_columns(df_raw, form_schema)
 
     if df_raw.empty:
         st.markdown("""
@@ -2397,25 +2399,138 @@ def render_dashboard():
                     st.altair_chart(bar_c + line_c, use_container_width=True)
 
     # ── EXPORT ──
+    # ── EXPORT ──
     st.markdown("---")
     st.markdown('<div class="section-head">📥 Export Data</div>', unsafe_allow_html=True)
     ex1, ex2, ex3, _ = st.columns([2, 2, 2, 2])
     with ex1:
-        st.download_button(
-            "⬇ All Responses (CSV)",
-            data=df.to_csv(index=False).encode("utf-8"),
-            file_name=f"land_public_transport_responses_{date_from}_{date_to}.csv",
-            mime="text/csv", use_container_width=True,
-        )
-    with ex2:
-        if not df_sent.empty and "raw_feedback" in df_sent.columns:
-            cols_to_export = ["raw_feedback", sent_col] + [s for s in ["sentiment_score", "created_at"] if s in df_sent.columns]
+        # Export all responses with questions expanded into separate rows
+        responses_expanded = []
+        for _, response in df.iterrows():
+            respondent_id = str(response.get("id", ""))[:8]
+            submitted_date = response.get("created_at", "")
+            
+            # Add demographics
+            demo_ans = response.get("demo_answers", {})
+            if isinstance(demo_ans, dict):
+                for demo_q, demo_ans_val in demo_ans.items():
+                    if isinstance(demo_ans_val, list):
+                        demo_ans_val = ", ".join(str(x) for x in demo_ans_val)
+                    responses_expanded.append({
+                        "Respondent ID": respondent_id,
+                        "Submitted": submitted_date,
+                        "Question Type": "Demographic",
+                        "Question": demo_q,
+                        "Answer": str(demo_ans_val) if demo_ans_val else "",
+                    })
+            
+            # Add regular questions
+            ans = response.get("answers", {})
+            if isinstance(ans, dict):
+                for question_key, answer_val in ans.items():
+                    if isinstance(answer_val, list):
+                        answer_val = ", ".join(str(x) for x in answer_val)
+                    responses_expanded.append({
+                        "Respondent ID": respondent_id,
+                        "Submitted": submitted_date,
+                        "Question Type": "Standard",
+                        "Question": question_key,
+                        "Answer": str(answer_val) if answer_val else "",
+                    })
+        
+        if responses_expanded:
+            df_expanded = pd.DataFrame(responses_expanded)
             st.download_button(
-                "⬇ Sentiment Log (CSV)",
-                data=df_sent[cols_to_export].to_csv(index=False).encode("utf-8"),
-                file_name=f"land_public_transport_sentiment_{date_from}_{date_to}.csv",
+                "⬇ All Responses",
+                data=df_expanded.to_csv(index=False).encode("utf-8"),
+                file_name=f"land_public_transport_responses_{date_from}_{date_to}.csv",
                 mime="text/csv", use_container_width=True,
             )
+        else:
+            st.download_button(
+                "⬇ All Responses (CSV)",
+                data=df.to_csv(index=False).encode("utf-8"),
+                file_name=f"land_public_transport_responses_{date_from}_{date_to}.csv",
+                mime="text/csv", use_container_width=True,
+            )
+    with ex2:
+        if not df_sent.empty and "raw_feedback" in df_sent.columns:
+            # Build sentiment log with each question-answer pair on separate row
+            sentiment_log_rows = []
+            for _, row in df_sent.iterrows():
+                created_date = row.get("created_at", "")
+                response_sentiment = row.get(sent_col, "")
+                response_score = row.get("sentiment_score", "")
+                qs = row.get("question_sentiments", {})
+                answers = row.get("answers", {})
+                
+                # Handle malformed data - if qs is a string, parse it
+                if isinstance(qs, str):
+                    try:
+                        import json
+                        qs = json.loads(qs) if qs.startswith('{') else {}
+                    except:
+                        qs = {}
+                
+                if isinstance(answers, str):
+                    try:
+                        import json
+                        answers = json.loads(answers) if answers.startswith('{') else {}
+                    except:
+                        answers = {}
+                
+                # Expand to one row per question-answer pair
+                if isinstance(qs, dict) and qs and isinstance(answers, dict) and answers:
+                    for q_id, q_data in qs.items():
+                        if isinstance(q_data, dict) and q_data.get("enable_sentiment") == True:
+                            # Find the corresponding answer for this question
+                            answer_text = answers.get(str(q_id), "") or answers.get(q_id, "")
+                            
+                            # Clean up answer if it's a list
+                            if isinstance(answer_text, list):
+                                answer_text = ", ".join(str(x) for x in answer_text)
+                            else:
+                                answer_text = str(answer_text)
+                            
+                            sentiment = q_data.get("sentiment", "")
+                            # Clean up sentiment value
+                            if isinstance(sentiment, str):
+                                sentiment = sentiment.split("|")[0].strip()
+                            
+                            sentiment_log_rows.append({
+                                "Question ID": str(q_id),
+                                "Answer": answer_text,
+                                "Sentiment": sentiment,
+                                "Confidence": q_data.get("confidence", ""),
+                                "Dimension": q_data.get("dimension", ""),
+                                "Created At": created_date,
+                            })
+                else:
+                    # No question sentiments enabled - show response-level only
+                    if isinstance(answers, dict) and answers:
+                        for q_id, answer_text in answers.items():
+                            if isinstance(answer_text, list):
+                                answer_text = ", ".join(str(x) for x in answer_text)
+                            else:
+                                answer_text = str(answer_text)
+                            
+                            sentiment_log_rows.append({
+                                "Question ID": str(q_id),
+                                "Answer": answer_text,
+                                "Sentiment": response_sentiment,
+                                "Confidence": response_score,
+                                "Dimension": "",
+                                "Created At": created_date,
+                            })
+            
+            if sentiment_log_rows:
+                df_sent_export = pd.DataFrame(sentiment_log_rows)
+                st.download_button(
+                    "⬇ Sentiment Log",
+                    data=df_sent_export.to_csv(index=False).encode("utf-8"),
+                    file_name=f"land_public_transport_sentiment_{date_from}_{date_to}.csv",
+                    mime="text/csv", use_container_width=True,
+                )
     with ex3:
         if has_any_rating_data:
             summary_rows_export = []
