@@ -99,9 +99,16 @@ st.markdown("""
 inject_css()
 
 # ══════════════════════════════════════════
-# SUPABASE SETUP
+# SUPABASE SETUP & SESSION RECOVERY
 # ══════════════════════════════════════════
 conn = st.connection("supabase", type=SupabaseConnection)
+
+# Preserve session_id in URL for navigation persistence
+session_id_from_url = st.query_params.get("session_id")
+if session_id_from_url and "session_id" not in st.query_params:
+    st.query_params["session_id"] = session_id_from_url
+elif st.session_state.get("session_id") and "session_id" not in st.query_params:
+    st.query_params["session_id"] = st.session_state.get("session_id")
 
 # ══════════════════════════════════════════
 # PAGE CONTENT

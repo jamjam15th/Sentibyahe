@@ -349,6 +349,12 @@ if not admin_email:
     st.error("🔒 Please log in to view the dashboard.")
     st.stop()
 
+# CRITICAL: Persist session_id in URL so it survives reloads and navigation
+if session_id_from_url and "session_id" not in st.query_params:
+    st.query_params["session_id"] = session_id_from_url
+elif st.session_state.get("session_id") and "session_id" not in st.query_params:
+    st.query_params["session_id"] = st.session_state.get("session_id")
+
 # Track page for detecting navigation back to builder
 st.session_state._prev_page = st.session_state.get("current_page", "")
 st.session_state.current_page = "dashboard"
@@ -740,7 +746,7 @@ def recalculate_servqual_columns(df: pd.DataFrame, schema: dict) -> pd.DataFrame
     
     return df
 
-@st.fragment(run_every=timedelta(seconds=5))
+@st.fragment
 def render_dashboard():
     df_raw = fetch_dashboard_data(admin_email, current_form_id)
     question_scale_map = fetch_question_scale_map(admin_email, current_form_id)

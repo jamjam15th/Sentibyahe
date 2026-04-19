@@ -263,12 +263,51 @@ def confirm_delete_account():
             st.rerun()
 
 # ══════════════════════════════════════════
-# 2. AUTHENTICATION CHECK
+# 2. AUTHENTICATION CHECK & SESSION RECOVERY
 # ══════════════════════════════════════════
-admin_email = st.session_state.get("user_email")
+# Priority 1: Check URL query params (survives reload)
+admin_email = None
+session_id_from_url = st.query_params.get("session_id")
+
+if session_id_from_url:
+    try:
+        # Restore user from database using session_id from URL
+        result = conn.client.table("active_sessions").select("user_email").eq("session_id", session_id_from_url).execute()
+        if result.data:
+            admin_email = result.data[0].get("user_email")
+            st.session_state.user_email = admin_email
+            st.session_state.session_id = session_id_from_url
+            st.session_state.logged_in = True
+    except Exception:
+        pass
+
+# Priority 2: Check session state (cache from previous interaction)
+if not admin_email:
+    admin_email = st.session_state.get("user_email")
+    session_id = st.session_state.get("session_id")
+    
+    # If we have session_id in state but not email, try to restore from DB
+    if session_id and not admin_email:
+        try:
+            result = conn.client.table("active_sessions").select("user_email").eq("session_id", session_id).execute()
+            if result.data:
+                admin_email = result.data[0].get("user_email")
+                st.session_state.user_email = admin_email
+                # Add to URL for future reloads
+                st.query_params["session_id"] = session_id
+        except Exception:
+            pass
+
+# If no email found, redirect to login
 if not admin_email:
     st.error("🔒 Please log in to view settings.")
     st.stop()
+
+# CRITICAL: Persist session_id in URL so it survives reloads and navigation
+if session_id_from_url and "session_id" not in st.query_params:
+    st.query_params["session_id"] = session_id_from_url
+elif st.session_state.get("session_id") and "session_id" not in st.query_params:
+    st.query_params["session_id"] = st.session_state.get("session_id")
 
 st.markdown("""
 <div class="premium-header">

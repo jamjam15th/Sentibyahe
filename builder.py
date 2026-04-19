@@ -52,10 +52,6 @@ def render_nuclear_loader(duration="2.5s", text="Loading Workspace..."):
             animation: snapVisible_{loader_id} 0.1s forwards {duration} !important;
         }}
 
-        .stAppDeployButton {{ display: none !important; }}
-
-        .stAppToolbar {{ background: #f0f4f8;}}
-        
         #{loader_id} {{
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background-color: #f0f4f8; z-index: 999999998;
@@ -99,12 +95,6 @@ inject_css()
 if st.session_state.get("current_page") != "form_builder":
     st.session_state.current_page = "form_builder"
     prev_page = st.session_state.get("_prev_page", "")
-
-    # If we're coming back from another page, clear metadata cache so it reloads from database
-    if prev_page and prev_page != "form_builder":
-        st.session_state.pop("_meta_loaded_for_form", None)
-    
-    st.session_state._prev_page = "form_builder"
 
     # Show loader whether coming from login (initial) OR from another page
     st.session_state._page_initial_load = False
@@ -380,10 +370,53 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
-# SUPABASE SETUP
+# SUPABASE SETUP & SESSION RECOVERY
 # ══════════════════════════════════════════
-conn        = st.connection("supabase", type=SupabaseConnection)
-admin_email = st.session_state.user_email
+conn = st.connection("supabase", type=SupabaseConnection)
+
+# Priority 1: Check URL query params (survives reload)
+admin_email = None
+session_id_from_url = st.query_params.get("session_id")
+
+if session_id_from_url:
+    try:
+        # Restore user from database using session_id from URL
+        result = conn.client.table("active_sessions").select("user_email").eq("session_id", session_id_from_url).execute()
+        if result.data:
+            admin_email = result.data[0].get("user_email")
+            st.session_state.user_email = admin_email
+            st.session_state.session_id = session_id_from_url
+            st.session_state.logged_in = True
+    except Exception:
+        pass
+
+# Priority 2: Check session state (cache from previous interaction)
+if not admin_email:
+    admin_email = st.session_state.get("user_email")
+    session_id = st.session_state.get("session_id")
+    
+    # If we have session_id in state but not email, try to restore from DB
+    if session_id and not admin_email:
+        try:
+            result = conn.client.table("active_sessions").select("user_email").eq("session_id", session_id).execute()
+            if result.data:
+                admin_email = result.data[0].get("user_email")
+                st.session_state.user_email = admin_email
+                # Add to URL for future reloads
+                st.query_params["session_id"] = session_id
+        except Exception:
+            pass
+
+# If no email found, redirect to login
+if not admin_email:
+    st.error("🔒 Please log in to access the form builder.")
+    st.stop()
+
+# CRITICAL: Persist session_id in URL so it survives reloads and navigation
+if session_id_from_url and "session_id" not in st.query_params:
+    st.query_params["session_id"] = session_id_from_url
+elif st.session_state.get("session_id") and "session_id" not in st.query_params:
+    st.query_params["session_id"] = st.session_state.get("session_id")
 
 # Initialize multi-form session state
 init_form_session_state(admin_email)
@@ -664,27 +697,13 @@ def dialog_delete_multiple_forms_confirmation():
 # ══════════════════════════════════════════
 try:
     meta_req  = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).eq("form_id", current_form_id).limit(1).execute()
-    form_meta = meta_req.data[0] if meta_req.data else None
-    
-    # If form_meta doesn't exist, create it with proper defaults
-    if not form_meta:
-        default_meta = {
-            "admin_email": admin_email,
-            "form_id": current_form_id,
-            "title": "Land Public Transportation Respondent Survey",
-            "description": "Please share your honest experience.",
-            "include_demographics": False,
-            "allow_multiple_responses": True,
-            "reach_out_contact": "",
-            "include_standard_servqual_questions": True,
-        }
-        try:
-            conn.client.table("form_meta").insert(default_meta).execute()
-            form_meta = default_meta
-        except Exception as create_meta_err:
-            # If insert fails (e.g., row already exists from concurrent request), fetch again
-            meta_req = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).eq("form_id", current_form_id).limit(1).execute()
-            form_meta = meta_req.data[0] if meta_req.data else default_meta
+    form_meta = meta_req.data[0] if meta_req.data else {
+        "title": "Land Public Transportation Respondent Survey",
+        "description": "Please share your honest experience.",
+        "include_demographics": False,
+        "allow_multiple_responses": True,
+        "reach_out_contact": "",
+    }
     
     # For sample forms, ensure reach_out_contact is populated even if it was empty in the database
     if form_meta.get("title") == "Sentibyahe: System Evaluation Test Form" and not form_meta.get("reach_out_contact"):
@@ -696,7 +715,6 @@ except Exception:
         "include_demographics": False,
         "allow_multiple_responses": True,
         "reach_out_contact": "",
-        "include_standard_servqual_questions": True,
     }
 
 # Check if this is the sample form (first form created on new account)
@@ -720,26 +738,10 @@ if "meta_desc" not in st.session_state:
     st.session_state.meta_desc = form_meta.get("description", "") or ""
 if "meta_title" not in st.session_state:
     st.session_state.meta_title = form_meta.get("title", "") or ""
-
-# Check if we're on a different form - if so, reload metadata from database
-if st.session_state.get("_meta_loaded_for_form") != current_form_id:
-    # Load fresh from database for this form
-    # Handle NULL or missing values properly by defaulting to sensible values
-    st.session_state.meta_reach_out = form_meta.get("reach_out_contact") or ""
-    st.session_state.meta_allow_multi = form_meta.get("allow_multiple_responses") if form_meta.get("allow_multiple_responses") is not None else True
-    st.session_state.meta_include_demo = form_meta.get("include_demographics") if form_meta.get("include_demographics") is not None else False
-    st.session_state.meta_include_servqual = form_meta.get("include_standard_servqual_questions") if form_meta.get("include_standard_servqual_questions") is not None else True
-    st.session_state._meta_loaded_for_form = current_form_id
-else:
-    # Even if form hasn't changed, ensure all keys exist (handles browser refresh case)
-    if "meta_allow_multi" not in st.session_state:
-        st.session_state.meta_allow_multi = form_meta.get("allow_multiple_responses") if form_meta.get("allow_multiple_responses") is not None else True
-    if "meta_include_demo" not in st.session_state:
-        st.session_state.meta_include_demo = form_meta.get("include_demographics") if form_meta.get("include_demographics") is not None else False
-    if "meta_include_servqual" not in st.session_state:
-        st.session_state.meta_include_servqual = form_meta.get("include_standard_servqual_questions") if form_meta.get("include_standard_servqual_questions") is not None else True
-    if "meta_reach_out" not in st.session_state:
-        st.session_state.meta_reach_out = form_meta.get("reach_out_contact") or ""
+st.session_state.meta_reach_out = st.session_state.get("meta_reach_out") or form_meta.get("reach_out_contact") or ""
+st.session_state.meta_allow_multi = st.session_state.get("meta_allow_multi", bool(form_meta.get("allow_multiple_responses", True)))
+st.session_state.meta_include_demo = st.session_state.get("meta_include_demo", bool(form_meta.get("include_demographics", False)))
+st.session_state.meta_include_servqual = st.session_state.get("meta_include_servqual", bool(form_meta.get("include_standard_servqual_questions", True)))
 
 def update_meta():
     payload = {
@@ -748,10 +750,18 @@ def update_meta():
         "public_id": public_id,
         "title": st.session_state.get("meta_title", form_meta.get("title", "")),
         "description": st.session_state.get("meta_desc", form_meta.get("description", "")),
-        "include_demographics": bool(st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))),
-        "include_standard_servqual_questions": bool(st.session_state.get("meta_include_servqual", form_meta.get("include_standard_servqual_questions", True))),
-        "allow_multiple_responses": bool(st.session_state.get("meta_allow_multi", form_meta.get("allow_multiple_responses", True))),
-        "reach_out_contact": st.session_state.get("meta_reach_out", form_meta.get("reach_out_contact") or ""),
+        "include_demographics": st.session_state.get(
+            "meta_include_demo", form_meta.get("include_demographics", False)
+        ),
+        "include_standard_servqual_questions": st.session_state.get(
+            "meta_include_servqual", form_meta.get("include_standard_servqual_questions", True)
+        ),
+        "allow_multiple_responses": st.session_state.get(
+            "meta_allow_multi", form_meta.get("allow_multiple_responses", True)
+        ),
+        "reach_out_contact": st.session_state.get(
+            "meta_reach_out", form_meta.get("reach_out_contact") or ""
+        ),
     }
     try:
         result = conn.client.table("form_meta").upsert(payload, on_conflict="admin_email,form_id").execute()
@@ -768,10 +778,6 @@ def update_meta():
         if "reach_out_contact" in err:
             st.session_state["form_meta_reach_out_migration_needed"] = True
             payload.pop("reach_out_contact", None)
-            stripped = True
-        if "include_standard_servqual_questions" in err:
-            st.session_state["form_meta_servqual_migration_needed"] = True
-            payload.pop("include_standard_servqual_questions", None)
             stripped = True
         if stripped:
             try:
@@ -841,7 +847,7 @@ if not viewing_editor:
         st.markdown("<p style='color: #7c8db5; margin-top: -15px; margin-bottom: 0px;'>Create a brand new blank survey from scratch.</p>", unsafe_allow_html=True)
         
     with top_col2:
-        if st.button("New Form", use_container_width=True, type="primary", icon=":material/forms_add_on:"):
+        if st.button("➕ Create Blank Form", use_container_width=True, type="primary"):
             dialog_create_form()
             
     st.markdown("---")
@@ -1017,8 +1023,6 @@ with sc1:
         if success:
             st.success("✅ Settings saved successfully!")
             refresh_form_list(admin_email)
-            # Clear metadata flag so it reloads from database on next rerun
-            st.session_state.pop("_meta_loaded_for_form", None)
             import time
             time.sleep(1)
             st.rerun()
@@ -1126,7 +1130,9 @@ else:
 # ADD NEW QUESTION
 # ══════════════════════════════════════════
 if not st.session_state.preview_mode and not is_sample_form:
-    with st.expander("➕ Add New Question", expanded=len(questions) == 0):
+    # Keep expander open if question was just added (for confirmation feedback)
+    should_expand = (len(questions) == 0) or st.session_state.get("question_just_added", False)
+    with st.expander("➕ Add New Question", expanded=should_expand):
         qa1, qa2 = st.columns([2.5, 1.5])
         with qa1:
             st.markdown("**Question**")
@@ -1139,6 +1145,15 @@ if not st.session_state.preview_mode and not is_sample_form:
                 q_type_options,
                 label_visibility="collapsed",
             )
+
+        # SERVQUAL dimension tagging (available for ANY question type)
+        st.markdown("**SERVQUAL Dimension (optional)**")
+        selected_dim = st.selectbox(
+            "",
+            ["None"] + DIM_KEYS,
+            label_visibility="collapsed"
+        )
+        servqual_dim = None if selected_dim == "None" else selected_dim
 
         new_options, new_scale_max, new_scale_label_low, new_scale_label_high = [], 5, "", ""
 
@@ -1178,7 +1193,7 @@ if not st.session_state.preview_mode and not is_sample_form:
             with sc3:
                 new_scale_label_high = st.text_input(f"High label", placeholder="Strongly Agree", label_visibility="collapsed")
 
-        # Inline checkboxes - determine demographic status first
+        # Inline checkboxes
         opt1, opt2, opt3 = st.columns(3)
         with opt1:
             is_required = st.checkbox("Required", value=True)
@@ -1190,18 +1205,6 @@ if not st.session_state.preview_mode and not is_sample_form:
             enable_sentiment = False
             if q_type in ("Short Answer", "Paragraph"):
                 enable_sentiment = st.checkbox("Enable sentiment analysis", value=True, help="Analyze responses for sentiment & SERVQUAL dimension")
-
-        # SERVQUAL dimension tagging (disabled if marked as demographic)
-        st.markdown("**SERVQUAL Dimension (optional)**")
-        selected_dim = st.selectbox(
-            "",
-            ["None"] + DIM_KEYS,
-            label_visibility="collapsed",
-            disabled=is_demographic_q,
-            help="Not available when question is marked as demographic"
-        )
-        # If demographic, ignore any SERVQUAL selection and set to None
-        servqual_dim = None if (selected_dim == "None" or is_demographic_q) else selected_dim
 
         if st.button("💾 Save Question", use_container_width=True, type="primary"):
             if new_prompt.strip():
@@ -1230,13 +1233,18 @@ if not st.session_state.preview_mode and not is_sample_form:
                     if "new_options_list" in st.session_state:
                         del st.session_state.new_options_list
                     st.session_state.question_just_added = True  # Flag to show success message after reload
+                    # Clear cache and force immediate session state update
+                    fetch_questions.clear()
+                    # Force refresh of questions in session state
+                    st.session_state._force_refresh_questions = True
                     st.rerun()
             else:
                 st.warning("⚠️ Enter question text first.")
         
         # Show success message if question was just added
         if st.session_state.get("question_just_added"):
-            st.success("✅ New question added!")
+            st.success("✅ New question added! It will appear below after you close this form.")
+            # Keep flag for one more render cycle to show message, then clear it
             st.session_state.question_just_added = False  # Clear flag
 
 # ══════════════════════════════════════════
@@ -1289,15 +1297,9 @@ def passes_filter(q):
 if is_sample_form:
     show_demo_block = True  # Always show demo block for sample form
 elif st.session_state.preview_mode:
-    # Ensure keys exist before accessing
-    if "meta_include_demo" not in st.session_state:
-        st.session_state.meta_include_demo = form_meta.get("include_demographics", False)
-    show_demo_block = st.session_state.meta_include_demo
+    show_demo_block = form_meta.get("include_demographics", False)
 else:
-    # Ensure keys exist before accessing
-    if "meta_include_demo" not in st.session_state:
-        st.session_state.meta_include_demo = form_meta.get("include_demographics", False)
-    show_demo_block = st.session_state.meta_include_demo
+    show_demo_block = st.session_state.get("meta_include_demo", form_meta.get("include_demographics", False))
 
 st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)
 
@@ -1336,16 +1338,16 @@ STANDARD_DEMO_QUESTIONS = [
 ]
 
 STANDARD_SERVQUAL_QUESTIONS = [
-    {"prompt": "How would you describe the physical condition, cleanliness, and overall seating comfort of the vehicle you rode recently? (Paano mo ilalarawan ang pisikal na kondisyon, kalinisan, at pangkalahatang komportableng pag-upo sa sasakyang sinakyan mo kamakailan lang?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "What can you say about the air ventilation, temperature, and general atmosphere inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin, temperatura, at pangkalahatang kapaligiran sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "How would you describe the overall reliability and operation of the vehicle during your entire trip? (Paano mo ilalarawan ang pangkalahatang pagiging maaasahan at maayos na takbo ng sasakyan sa buong biyahe mo?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "What are your thoughts on the affordability of the fare and how your payment and change were handled by the driver/conductor? (Ano ang iyong pananaw sa halaga ng pamasahe at kung paano inasikaso ng drayber/konduktor ang iyong ibinayad at sukli?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "How would you describe your experience regarding the travel time and the promptness of the ride in reaching your destination? (Paano mo ilalarawan ang iyong karanasan patungkol sa tagal ng biyahe at ang pagiging maagap ng sasakyan patungo sa iyong destinasyon?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "What can you say about the attentiveness of the driver or conductor when passengers needed to get off or communicate their drop-off points? (Ano ang masasabi mo sa pagiging alisto ng driver o konduktor kapag kailangan nang bumaba o makipag-usap ng mga pasahero para sa kanilang bababaan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
-    {"prompt": "What are your thoughts on how the driver navigated the road and followed traffic rules during your trip? (Ano ang iyong pananaw sa kung paano nagmaneho at sumunod sa batas trapiko ang driver sa iyong biyahe?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
-    {"prompt": "How would you describe your overall sense of safety and security against incidents like theft or harassment while inside the vehicle? (Paano mo ilalarawan ang iyong pangkalahatang pakiramdam ng kaligtasan at seguridad laban sa mga insidente tulad ng pagnanakaw o harassment habang nasa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
-    {"prompt": "What can you say about the behavior, politeness, and overall treatment of passengers by the transport crew? (Ano ang masasabi mo sa pag-uugali, pagiging magalang, at pangkalahatang pagtrato ng mga tauhan sa mga pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
-    {"prompt": "What are your thoughts on the transport crew's attentiveness and care for passengers who might need extra assistance, such as Senior Citizens, PWDs, or pregnant women? (Ano ang pananaw mo sa pagiging maasikaso at pag-aalaga ng mga tauhan sa mga pasaherong maaaring mangailangan ng karagdagang tulong, tulad ng Senior Citizens, PWDs, o mga buntis?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Tangibles", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Reliability", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)", "q_type": "Rating (Likert)", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": False, "servqual_dimension": "Responsiveness", "is_locked": True, "scale_max": 5, "scale_label_low": "Poor", "scale_label_high": "Excellent"},
+    {"prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+    {"prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+    {"prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
     {"prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi", "q_type": "Paragraph", "options": [], "is_required": False, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": None, "is_locked": True},
 ]
 
@@ -1362,7 +1364,7 @@ def move_question_order(q_list, target_index, direction):
     apply_new_sort_order(new_list)
     st.rerun()
 
-def get_card_html(idx, q, q_num_label=None, is_locked=False, show_solid_border=False):
+def get_card_html(idx, q, q_num_label=None, is_locked=False):
     """Render a single question card."""
     def q_type_badge(q_type):
         return {"Short Answer":"✏️ Short Answer","Paragraph":"📝 Paragraph",
@@ -1423,15 +1425,8 @@ def get_card_html(idx, q, q_num_label=None, is_locked=False, show_solid_border=F
         extra = '<div style="margin-top:16px;width:100%;border-bottom:1px dashed #b0bcd8;padding-bottom:24px;color:#7c8db5;font-size:13px;">Long answer text</div>'
 
     # 🔥 FIX: Tinanggal ang heavy solid borders para bumagay sa st.container natin
-    if show_solid_border:
-        border_style = "1px solid #b0bcd8"
-        bg_style = "transparent"
-    elif is_locked:
-        border_style = "2px dashed #b0bcd8"
-        bg_style = "#fafbfc"
-    else:
-        border_style = "none"
-        bg_style = "transparent"
+    border_style = "2px dashed #b0bcd8" if is_locked else "none"
+    bg_style = "#fafbfc" if is_locked else "transparent"
 
     html_str = f'<div style="background:{bg_style};border:{border_style};border-radius:8px;padding:8px 4px;width:100%;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">{display_num}</span><span style="font-size:11px;color:#5566a0;background:#f0f3ff;padding:2px 7px;border-radius:4px;margin-right:4px;">{badge}</span>{dim_tag}{demo_tag}</div><div style="font-size:14px;font-weight:600;color:#1a2e55;line-height:1.4;word-break:break-word;">{prompt}{req_star}</div>{extra}</div>'
     
@@ -1453,9 +1448,7 @@ if st.session_state.preview_mode:
             st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
     
     # Show locked SERVQUAL questions if enabled in preview mode
-    if "meta_include_servqual" not in st.session_state:
-        st.session_state.meta_include_servqual = form_meta.get("include_standard_servqual_questions", True)
-    show_servqual = st.session_state.meta_include_servqual
+    show_servqual = st.session_state.get("meta_include_servqual", form_meta.get("include_standard_servqual_questions", True))
     if show_servqual:
         if not is_sample_form:
             st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
@@ -1468,7 +1461,7 @@ if st.session_state.preview_mode:
     if len(visible_questions) > 0:
         st.markdown("<p style='font-size:0.85rem; color:var(--steel); font-weight:600; margin-bottom: 0.5rem;'>Custom Survey Questions</p>", unsafe_allow_html=True)
         for idx, q in enumerate(visible_questions):
-            st.markdown(get_card_html(idx, q, q_num_label=f"Q{idx + 1 + demo_offset}", show_solid_border=True), unsafe_allow_html=True)
+            st.markdown(get_card_html(idx, q, q_num_label=f"Q{idx + 1 + demo_offset}"), unsafe_allow_html=True)
             st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
     elif not show_demo_block:
         st.markdown('<div style="text-align:center; padding:2rem; color:#7c8db5;">🔍 No custom questions added yet.</div>', unsafe_allow_html=True)
@@ -1484,9 +1477,7 @@ else:
             st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
 
     # Show locked SERVQUAL questions if enabled
-    if "meta_include_servqual" not in st.session_state:
-        st.session_state.meta_include_servqual = form_meta.get("include_standard_servqual_questions", True)
-    show_servqual = st.session_state.meta_include_servqual
+    show_servqual = st.session_state.get("meta_include_servqual", form_meta.get("include_standard_servqual_questions", True))
     if show_servqual and not filtered:
         if not is_sample_form:
             st.markdown("<hr style='margin: 1.5rem 0; border-color: #dde3ef;'>", unsafe_allow_html=True)
@@ -1601,38 +1592,25 @@ else:
                     with ec1:
                         e_prompt = st.text_input("Edit question", value=q["prompt"], key=f"ep_{qid_str}")
                     with ec2:
-                        # Determine available question types
-                        type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
-                        cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
-                        e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
+                        e_dim_choices = ["None"] + DIM_KEYS
+                        e_dim = st.selectbox("Dimension", e_dim_choices, index=e_dim_choices.index(q["servqual_dimension"]) if q.get("servqual_dimension") in e_dim_choices else 0, key=f"ed_{qid_str}")
+                    
+                    # Determine available question types
+                    type_opts = ["Short Answer", "Paragraph", "Multiple Choice", "Multiple Select", "Rating (Likert)"]
+                    cur_type  = q["q_type"] if q["q_type"] in type_opts else "Rating (Likert)"
+                    e_type    = st.selectbox("Type", type_opts, index=type_opts.index(cur_type), key=f"et_{qid_str}")
 
                     e_req = st.checkbox("Required", value=bool(q.get("is_required")), key=f"er_{qid_str}")
                     
-                    # Mark as demographic - only show if Multiple Choice/Select
+                    # Mark as demographic - only show if Multiple Choice/Select and None dimension
                     e_demo = False
-                    if e_type in ("Multiple Choice", "Multiple Select"):
+                    if e_type in ("Multiple Choice", "Multiple Select") and e_dim == "None":
                         e_demo = st.checkbox(
                             "Mark as demographic",
                             value=bool(q.get("is_demographic")),
                             key=f"edemo_{qid_str}",
                             help="Tag this question's responses to appear in the Demographics chart on the Sentiment Dashboard",
                         )
-                    
-                    # SERVQUAL Dimension (disabled if marked as demographic)
-                    e_dim_choices = ["None"] + DIM_KEYS
-                    current_dim = q.get("servqual_dimension")
-                    current_dim_index = e_dim_choices.index(current_dim) if current_dim in e_dim_choices else 0
-                    e_dim = st.selectbox(
-                        "Dimension",
-                        e_dim_choices,
-                        index=current_dim_index,
-                        key=f"ed_{qid_str}",
-                        disabled=e_demo,
-                        help="Not available when question is marked as demographic"
-                    )
-                    # If demographic, ignore any SERVQUAL selection
-                    if e_demo:
-                        e_dim = "None"
                     
                     # Sentiment analysis toggle - only for Short Answer and Paragraph
                     e_enable_sentiment = False
