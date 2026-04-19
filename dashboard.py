@@ -395,10 +395,28 @@ DIM_PALETTE = {
 # ══════════════════════════════════════════
 @st.cache_resource(show_spinner="Initializing sentiment model…")
 def load_model():
-    from transformers import pipeline
-    return pipeline(
+    import transformers
+    import os
+    
+    # Use the same model logic as Analysis page
+    use_online = os.getenv("USE_ONLINE_MODEL", "false").lower() == "true"
+    
+    if not use_online:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        local_model_path = os.path.join(script_dir, "model")
+        
+        if os.path.exists(local_model_path) and os.path.exists(os.path.join(local_model_path, "model.safetensors")):
+            model_path = local_model_path
+        else:
+            model_path = "jamjam15th/land-public-transportation-model-2"
+    else:
+        model_path = "jamjam15th/land-public-transportation-model-2"
+    
+    return transformers.pipeline(
         "sentiment-analysis",
-        model="cardiffnlp/twitter-xlm-roberta-base-sentiment",
+        model=model_path,
+        tokenizer=model_path,
+        top_k=None,
         device=-1,
     )
 
