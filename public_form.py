@@ -4,7 +4,6 @@ import uuid
 import re
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
-from streamlit_extras.stylable_container import stylable_container
 from forms import get_form, fetch_active_forms
 
 st.set_page_config(
@@ -13,6 +12,19 @@ st.set_page_config(
     page_icon="🚌",
     layout="centered",
 )
+
+st.html("""
+    <style>
+    /* Use a partial match selector to target all keys starting with 'q_card_' */
+    div[class*="st-key-q_card_"] {
+        background: #fff;
+        border: 1px solid rgba(84,119,146,0.25);
+        border-radius: 12px;
+        padding: 1.8rem 2rem;
+        margin-bottom: 1rem;
+    }
+    </style>
+""")
 
 # ── STYLING ──
 st.markdown("""
@@ -474,10 +486,7 @@ elif len(form_schema) > 0:
                 f'background:#e6f7eb;color:#2a7a3b;margin-right:6px;">{dim}</span>'
             ) if dim else ""
 
-            with stylable_container(
-                key=f"q_card_{i}",
-                css_styles="{ background: #fff; border: 1px solid rgba(84,119,146,0.25); border-radius: 12px; padding: 1.8rem 2rem; margin-bottom: 1rem; }"
-            ):
+            with st.container(key=f"q_card_{i}"):
                 st.markdown(f"""
                 <div style="display:flex;gap:6px;margin-bottom:8px;">
                   <span style="font-size:11px;font-weight:700;color:#7c8db5;background:#eef1fa;padding:2px 6px;border-radius:4px;">Q{i+1}</span>

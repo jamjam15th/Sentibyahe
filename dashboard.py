@@ -30,6 +30,80 @@ st.set_page_config(
     layout="wide",
 )
 
+# 🔥 THE NUCLEAR FULL-PAGE LOADER (WITH SIDEBAR FIX) 🔥
+# Must go BEFORE Supabase connections and main CSS
+st.markdown("""
+<style>
+    /* 1. KEEP SIDEBAR ON TOP OF LOADER */
+    [data-testid="stSidebar"], 
+    [data-testid="stSidebarCollapsedControl"] {
+        z-index: 999999999 !important; /* Highest priority */
+    }
+
+    /* 2. COMPLETELY HIDE THE APP ROOT */
+    /* visibility: hidden is bulletproof against React hydration overrides */
+    .stApp [data-testid="stAppViewBlockContainer"] {
+        visibility: hidden !important;
+        animation: snapVisible 0.1s forwards 2.5s !important; /* 2.5 seconds wait */
+    }
+
+    /* 3. OVERLAY THAT COVERS EVERYTHING ELSE */
+    #nuclear-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #f0f4f8; /* Matched to your app background */
+        z-index: 999999998; /* Exactly one layer BELOW the sidebar */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        animation: fadeOutNuclear 0.4s ease-out 2.5s forwards; /* Matches the 2.5s wait */
+    }
+
+    .spinner {
+        border: 4px solid #ffffff;
+        border-top: 4px solid #1a2e55;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 15px;
+    }
+
+    .loading-text {
+        color: #1a2e55;
+        font-weight: 600;
+        font-family: 'Source Sans Pro', sans-serif;
+        font-size: 1.1rem;
+        letter-spacing: 0.5px;
+    }
+
+    /* 4. KEYFRAMES */
+    @keyframes snapVisible {
+        to { visibility: visible !important; }
+    }
+
+    @keyframes fadeOutNuclear {
+        0% { opacity: 1; visibility: visible; }
+        100% { opacity: 0; visibility: hidden; display: none; }
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<div id="nuclear-loader">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading Dashboard...</div>
+</div>
+""", unsafe_allow_html=True)
+
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Mulish:wght@300;400;500;600;700&display=swap');
@@ -50,114 +124,6 @@ st.markdown("""
 }
 *, html, body, p, span, div { font-family: 'Mulish', sans-serif !important; }
 .stApp { background-color: var(--off); }
-
-/* ── BEAUTIFUL LOADING SCREEN ── */
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, #f0f4f8 0%, #e8ecf3 100%);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  pointer-events: none;
-}
-
-.loading-container {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rem;
-}
-
-.loading-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 1.5rem;
-}
-
-.loading-icon {
-  font-size: 2.5rem;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-.loading-text {
-  font-family: 'Libre Baskerville', serif;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: rgb(26, 50, 99);
-  margin: 0;
-}
-
-.loading-subtitle {
-  font-size: 0.9rem;
-  color: rgb(84, 119, 146);
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  margin-bottom: 2rem;
-}
-
-/* Animated spinner */
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(84, 119, 146, 0.2);
-  border-top: 4px solid rgb(255, 197, 112);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Progress bar */
-.progress-bar-container {
-  width: 200px;
-  height: 4px;
-  background: rgba(84, 119, 146, 0.15);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 1rem;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, rgb(255, 197, 112), rgb(26, 50, 99));
-  border-radius: 2px;
-  animation: progress 2s ease-in-out infinite;
-}
-
-@keyframes progress {
-  0% { width: 0%; }
-  50% { width: 100%; }
-  100% { width: 100%; }
-}
-
-.loading-message {
-  font-size: 0.85rem;
-  color: rgb(120, 148, 172);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  animation: fadeInOut 2s ease-in-out infinite;
-}
-
-@keyframes fadeInOut {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
 
 #MainMenu, footer, [data-testid="stDecoration"],
 [data-testid="stStatusWidget"] { display: none !important; }
@@ -299,28 +265,6 @@ div[data-baseweb="tab-highlight"] { background-color: var(--navy) !important; }
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ══════════════════════════════════════════
-# LOADING SCREEN FUNCTION
-# ══════════════════════════════════════════
-def show_loading_screen(message: str = "Initializing dashboard…"):
-    """Display a beautiful loading screen"""
-    st.html(f"""
-    <div class="loading-overlay">
-        <div class="loading-container">
-            <div class="loading-brand">
-                <span class="loading-icon">🚌</span>
-                <h1 class="loading-text">Transit Sentiment</h1>
-            </div>
-            <div class="loading-subtitle">Land Public Transportation Analysis</div>
-            <div class="spinner"></div>
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill"></div>
-            </div>
-            <div class="loading-message">{message}</div>
-        </div>
-    </div>
-    """)
 
 # ══════════════════════════════════════════
 # SETUP
@@ -530,6 +474,9 @@ st.markdown("""
 btn_col1, btn_col2, btn_col3 = st.columns([0.15, 0.7, 0.15])
 with btn_col1:
     if st.button("← Back", use_container_width=True):
+        st.session_state._trigger_transition_loader = True
+        st.session_state._transition_loader_text = "Loading Workspace..."
+        st.session_state._page_initial_load = False
         st.switch_page("builder.py")
 
 st.markdown("<div style='margin:0.5rem 0'></div>", unsafe_allow_html=True)

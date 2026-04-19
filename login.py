@@ -1,11 +1,32 @@
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
-from streamlit_extras.stylable_container import stylable_container
 import pathlib
 from datetime import datetime, timezone, timedelta
 import uuid
 import hashlib
 from forms import create_sample_form_for_new_user
+
+
+st.html("""
+    <style>
+    .st-key-auth_card {
+        padding: .85rem 1.4rem .8rem !important;
+        max-width: 380px !important;
+        width: 100% !important;
+        margin: auto !important; 
+        border-radius: 0.5rem; /* Optional: adds rounded corners often expected with shadows */
+    }
+
+    /* Target the internal vertical block inside this specific container */
+    .st-key-auth_card div[data-testid="stVerticalBlock"] {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+    }
+    </style>
+""")
 
 # ==========================================
 # INITIAL SETUP & STATE
@@ -260,28 +281,7 @@ with left_col:
     """)
 
 with right_col:
-    with stylable_container(
-        key="auth_card",
-        css_styles="""
-            {
-                background: #ffffff !important;
-                border: 1px solid rgba(84,119,146,0.15) !important;
-                box-shadow: 0 4px 8px rgba(26,50,99,0.06),
-                            0 20px 60px rgba(26,50,99,0.14) !important;
-                padding: .85rem 1.4rem .8rem !important;
-                max-width: 380px !important;
-                width: 100% !important;
-                margin: auto !important; 
-            }
-            div[data-testid="stVerticalBlock"] {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                border-radius: 0 !important;
-            }
-        """,
-    ):
+    with st.container(key="auth_card"):
         render_card_header(active_tab)
         if active_tab == "login":
             handle_login_form()

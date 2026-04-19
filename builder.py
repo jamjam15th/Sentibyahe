@@ -1,4 +1,5 @@
 # form_builder.py
+import uuid
 import hashlib
 import streamlit as st
 from st_supabase_connection import SupabaseConnection
@@ -23,7 +24,6 @@ from forms import (
 # Demographics dashboard uses donut-style charts: answers must come from a fixed option list.
 ALLOWED_DEMOGRAPHIC_QTYPES = frozenset({"Multiple Choice", "Multiple Select"})
 
-
 def demographic_qtype_ok(q_type: str | None) -> bool:
     return (q_type or "") in ALLOWED_DEMOGRAPHIC_QTYPES
 
@@ -32,30 +32,98 @@ def demographic_qtype_ok(q_type: str | None) -> bool:
 # PAGE CONFIG & CSS
 # ══════════════════════════════════════════
 st.set_page_config(page_title="Form Builder", page_icon="🛠️", layout="wide")
+
+# 🔥 DYNAMIC NUCLEAR LOADER 🔥
+def render_nuclear_loader(duration="2.5s", text="Loading Workspace..."):
+    if duration == "0s":
+        return  # Do not inject loader if no transition is happening
+
+    loader_id = f"loader_{uuid.uuid4().hex[:8]}"
+    
+    st.markdown(f"""
+    <style>
+        [data-testid="stSidebar"], 
+        [data-testid="stSidebarCollapsedControl"] {{
+            z-index: 999999999 !important;
+        }}
+
+        .stApp [data-testid="stAppViewBlockContainer"] {{
+            visibility: hidden !important;
+            animation: snapVisible_{loader_id} 0.1s forwards {duration} !important;
+        }}
+
+        #{loader_id} {{
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #f0f4f8; z-index: 999999998;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            animation: fadeOutNuclear_{loader_id} 0.4s ease-out {duration} forwards;
+        }}
+
+        .spinner_{loader_id} {{
+            border: 4px solid #ffffff; border-top: 4px solid #1a2e55; border-radius: 50%;
+            width: 50px; height: 50px; margin-bottom: 15px;
+            animation: spin_{loader_id} 0.8s linear infinite;
+        }}
+
+        .loading-text_{loader_id} {{
+            color: #1a2e55; font-weight: 600; font-family: 'Source Sans Pro', sans-serif;
+            font-size: 1.1rem; letter-spacing: 0.5px;
+        }}
+
+        @keyframes snapVisible_{loader_id} {{ to {{ visibility: visible !important; }} }}
+        @keyframes fadeOutNuclear_{loader_id} {{
+            0% {{ opacity: 1; visibility: visible; }}
+            100% {{ opacity: 0; visibility: hidden; display: none; }}
+        }}
+        @keyframes spin_{loader_id} {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+    </style>
+
+    <div id="{loader_id}">
+        <div class="spinner_{loader_id}"></div>
+        <div class="loading-text_{loader_id}">{text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 inject_css()
 
 # ══════════════════════════════════════════
-# PAGE NAVIGATION STATE CLEANUP
+# PAGE NAVIGATION STATE CLEANUP & LOADER LOGIC
 # ══════════════════════════════════════════
-# Detect if we just arrived from another page (like dashboard.py)
 if st.session_state.get("current_page") != "form_builder":
     st.session_state.current_page = "form_builder"
-    
-    # List of all temporary dialog triggers used in this file
+    prev_page = st.session_state.get("_prev_page", "")
+
+    # Show loader whether coming from login (initial) OR from another page
+    st.session_state._page_initial_load = False
+    st.session_state._trigger_transition_loader = True
+    st.session_state._transition_loader_text = "Loading Workspace..."
+
     dialog_keys = [
-        "_show_create_form", 
-        "_show_rename_form", 
-        "_confirm_delete_form_id", 
-        "_confirm_delete_multiple_forms",
-        "_show_demo_type_dialog",
-        "_confirm_del_qid",
-        "_confirm_del_qid_str",
-        "_confirm_del_bulk_ids",
+        "_show_create_form", "_show_rename_form", "_confirm_delete_form_id",
+        "_confirm_delete_multiple_forms", "_show_demo_type_dialog",
+        "_confirm_del_qid", "_confirm_del_qid_str", "_confirm_del_bulk_ids",
         "_confirm_delete_all_responses"
     ]
-    # Wipe them clean so ghost dialogs don't appear
     for key in dialog_keys:
         st.session_state.pop(key, None)
+
+# Determine if we need to show the loader on this specific rerun
+load_duration = "0s"
+load_text = ""
+
+if st.session_state.get("_page_initial_load"):
+    load_duration = "2.0s"
+    load_text = "Loading Workspace..."
+    st.session_state._page_initial_load = False
+elif st.session_state.get("_trigger_transition_loader"):
+    load_duration = "1.0s"  # Shorter wait for transitions
+    load_text = st.session_state.get("_transition_loader_text", "Loading...")
+    st.session_state._trigger_transition_loader = False
+
+render_nuclear_loader(load_duration, load_text)
 
 # ── Force native Streamlit text colors to be dark & Add Premium Header ──
 st.markdown("""
@@ -368,7 +436,7 @@ def dialog_delete_single_question():
     if qid is None:
         return
     st.markdown(
-        "**This removes the question from your survey builder and from the live form.**  \n\n"
+        "**This removes the question from your survey builder and from the live form.** \n\n"
         "- **Past responses stay** in the database, but the dashboard aligns charts with **today’s** question list.  \n"
         "- If you **add new questions** afterward, only **new submissions** will have answers for them."
     )
@@ -394,7 +462,7 @@ def dialog_delete_bulk_questions():
         return
     n = len(ids)
     st.markdown(
-        f"**Delete {n} question(s)?**  \n\n"
+        f"**Delete {n} question(s)?** \n\n"
         "They will be removed from the builder and the live link. "
         "**Existing answers are not deleted**, but dashboard views follow **current** questions only. "
         "Any **new** questions you save later apply only to **new** responses."
@@ -419,8 +487,7 @@ def dialog_demographic_invalid_type():
 The **Demographics** tab groups answers in **donut (and similar) charts**. That only works when each
 respondent picks from a **fixed set of choices** — not unique text like names, and not numeric scales.
 
-**Allowed** when you turn on **Mark as demographic:**  
-**Multiple Choice** (one option) or **Multiple Select** (several options, e.g. transport modes).
+**Allowed** when you turn on **Mark as demographic:** **Multiple Choice** (one option) or **Multiple Select** (several options, e.g. transport modes).
 
 **Do not** mark as demographic: **Short Answer**, **Paragraph**, or **Likert** — those belong elsewhere
 in your survey (e.g. open feedback or SERVQUAL ratings).
@@ -437,6 +504,7 @@ def dialog_create_form():
     form_desc = st.text_area("Description (optional)", placeholder="e.g. Collect feedback about our services")
     
     col1, col2 = st.columns(2)
+    # Inside dialog_create_form()
     with col1:
         if st.button("Create", type="primary", use_container_width=True):
             if form_title.strip():
@@ -445,6 +513,10 @@ def dialog_create_form():
                     refresh_form_list(admin_email)
                     set_current_form(new_form["form_id"])
                     st.session_state.viewing_form_editor = True
+                    # TRIGGER LOADER HERE
+                    st.session_state._trigger_transition_loader = True
+                    st.session_state._transition_loader_text = f"Opening '{form_title}'..."
+                    
                     st.session_state.pop("_show_create_form", None)
                     st.success(f"Form '{form_title}' created!")
                     st.rerun()
@@ -787,6 +859,9 @@ if not viewing_editor:
                 if st.button(f"📄 {form_title}", key=f"form_select_{form_id}_{idx}", use_container_width=True, type="primary"):
                     set_current_form(form_id)
                     st.session_state.viewing_form_editor = True
+                    # TRIGGER LOADER HERE
+                    st.session_state._trigger_transition_loader = True
+                    st.session_state._transition_loader_text = f"Loading Editor..."
                     st.rerun()
                 
                 # 2. Secondary actions (hidden for sample form)
@@ -816,10 +891,16 @@ btn_col1, btn_col2 = st.columns(2)
 with btn_col1:
     if st.button("← Back", use_container_width=True):
         st.session_state.viewing_form_editor = False
+        # TRIGGER LOADER HERE
+        st.session_state._trigger_transition_loader = True
+        st.session_state._transition_loader_text = "Returning to Gallery..."
         st.rerun()
 
 with btn_col2:
     if st.button("📊 Sentiment Dashboard", use_container_width=True):
+        st.session_state._trigger_transition_loader = True
+        st.session_state._transition_loader_text = "Loading Dashboard..."
+        st.session_state._page_initial_load = False
         st.switch_page("dashboard.py")
 
 # Get current form details and display as title header
