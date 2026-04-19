@@ -652,24 +652,34 @@ def _format_demo_cell(v):
 # ══════════════════════════════════════════
 @st.cache_data(ttl=120)
 def fetch_form_questions_schema(email: str, form_id: str) -> dict:
-    """Fetch current form question schema to get SERVQUAL dimension tags."""
+    """Fetch current form question schema to get SERVQUAL dimension tags.
+    Returns a dict with both 'by_prompt' and 'by_id' keys for flexible lookups.
+    """
     try:
         r = (conn.client.table("form_questions")
-             .select("prompt, servqual_dimension, q_type")
+             .select("id, prompt, servqual_dimension, q_type")
              .eq("admin_email", email)
              .eq("form_id", form_id)
              .execute())
-        schema = {}
+        schema_by_prompt = {}
+        schema_by_id = {}
         for row in r.data or []:
             prompt = row.get("prompt")
+            q_id = row.get("id")
+            dimension_info = {
+                "dimension": row.get("servqual_dimension"),
+                "q_type": row.get("q_type"),
+            }
             if prompt:
-                schema[prompt] = {
-                    "dimension": row.get("servqual_dimension"),
-                    "q_type": row.get("q_type"),
-                }
-        return schema
+                schema_by_prompt[prompt] = dimension_info
+            if q_id:
+                schema_by_id[str(q_id)] = dimension_info
+        return {
+            "by_prompt": schema_by_prompt,
+            "by_id": schema_by_id,
+        }
     except Exception:
-        return {}
+        return {"by_prompt": {}, "by_id": {}}
 
 def recalculate_servqual_columns(df: pd.DataFrame, schema: dict) -> pd.DataFrame:
     """Recalculate SERVQUAL averages based on current schema, not stored values."""
@@ -737,7 +747,8 @@ def recalculate_servqual_columns(df: pd.DataFrame, schema: dict) -> pd.DataFrame
 def render_dashboard():
     df_raw = fetch_dashboard_data(admin_email, current_form_id)
     question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
-    form_schema = fetch_form_questions_schema(admin_email, current_form_id)
+    form_schema_full = fetch_form_questions_schema(admin_email, current_form_id)
+    form_schema = form_schema_full.get("by_prompt", {})  # Keep for backwards compatibility
     
     # Recalculate SERVQUAL columns based on current schema
     df_raw = recalculate_servqual_columns(df_raw, form_schema)
@@ -1144,7 +1155,7 @@ def render_dashboard():
     # ══════════════════════════════════
     # KPI RIBBON
     # ══════════════════════════════════
-    k1, k2, k3 = st.columns(3)
+    k1, k3 = st.columns(2)
 
     k1.markdown(f"""<div class="kpi-card">
       <div class="kpi-title">Total Responses</div>
@@ -1157,11 +1168,11 @@ def render_dashboard():
         if has_servqual_data else "N/A"
     )
     servqual_subtext = "Avg of 5 SERVQUAL dimensions" if has_servqual_data else "No SERVQUAL tags yet"
-    k2.markdown(f"""<div class="kpi-card">
-      <div class="kpi-title">Overall SERVQUAL</div>
-      <div class="kpi-value gold">{servqual_display}</div>
-      <div class="kpi-sub">{servqual_subtext}</div>
-    </div>""", unsafe_allow_html=True)
+    # k2.markdown(f"""<div class="kpi-card">
+    #   <div class="kpi-title">Overall SERVQUAL</div>
+    #   <div class="kpi-value gold">{servqual_display}</div>
+    #   <div class="kpi-sub">{servqual_subtext}</div>
+    # </div>""", unsafe_allow_html=True)
     
     # Calculate SERVQUAL Sentiment from dimension_net_scores_kpi
     if has_dimension_sentiment_kpi:
@@ -2428,8 +2439,14 @@ def render_dashboard():
                             q_id = q_text_to_id.get(question)
                             
                             if isinstance(question_sentiments, dict):
-                                # Look up by question text (prompt), not by ID
-                                q_data = question_sentiments.get(question, {})
+                                # Try to look up by ID first (primary key in question_sentiments)
+                                # Then fall back to question text
+                                q_data = None
+                                if q_id:
+                                    q_data = question_sentiments.get(q_id, {})
+                                if not q_data or not isinstance(q_data, dict) or not q_data.get("sentiment"):
+                                    q_data = question_sentiments.get(question, {})
+                                
                                 if isinstance(q_data, dict):
                                     if q_data.get("enable_sentiment") is False:
                                         continue
@@ -2449,7 +2466,14 @@ def render_dashboard():
                                         q_confidence = response_level_confidence
                                     
                                     # Get SERVQUAL dimension for this question
-                                    q_dimension = form_schema.get(question, {}).get("dimension")
+                                    # First check if dimension is already in question_sentiments (from public_form.py)
+                                    q_dimension = q_data.get("dimension")
+                                    # If not found there, try looking up from form schema by ID or text
+                                    if not q_dimension:
+                                        if q_id:
+                                            q_dimension = form_schema_full.get("by_id", {}).get(q_id, {}).get("dimension")
+                                        if not q_dimension:
+                                            q_dimension = form_schema.get(question, {}).get("dimension")
                                     dimension_display = q_dimension if q_dimension else "Untagged"
                                     
                                     log_rows.append({
