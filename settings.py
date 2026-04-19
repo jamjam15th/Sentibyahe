@@ -205,13 +205,21 @@ def confirm_delete_account():
                 # Delete the auth user account using Supabase admin API
                 # Method 1: Try using secrets from st.secrets (for deployed environments)
                 deleted_user = False
-                SUPABASE_URL = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_URL", "")
-                SUPABASE_SERVICE_ROLE = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_SERVICE_ROLE_KEY", "")
+                SUPABASE_URL = ""
+                SUPABASE_SERVICE_ROLE = ""
+                
+                # Try to get from st.secrets (may fail if secrets.toml doesn't exist)
+                try:
+                    SUPABASE_URL = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_URL", "")
+                    SUPABASE_SERVICE_ROLE = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_SERVICE_ROLE_KEY", "")
+                except Exception:
+                    pass  # Secrets file not found, fall back to env vars
                 
                 # Method 2: Try environment variables (for DigitalOcean with env vars)
                 if not SUPABASE_SERVICE_ROLE:
                     import os
-                    SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+                    SUPABASE_URL = SUPABASE_URL or os.getenv("SUPABASE_URL", "")
+                    SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
                 
                 if SUPABASE_URL and SUPABASE_SERVICE_ROLE and user_id:
                     try:
