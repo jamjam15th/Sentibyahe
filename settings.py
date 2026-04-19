@@ -190,11 +190,6 @@ with tab1:
             except Exception as e:
                 st.error(f"⚠️ Error updating name: {e}")
 
-        st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
-        if st.button("🚪 Sign Out"):
-            st.session_state.clear()
-            st.rerun()
-
     with c2:
         st.markdown("### 🔐 Change Password")
         new_pw = st.text_input("New Password", type="password", placeholder="Enter new password")

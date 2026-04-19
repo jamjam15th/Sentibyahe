@@ -290,7 +290,7 @@ elif st.session_state.get("logged_in", False):
 
         st.divider()
 
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("🚪 LOGOUT", use_container_width=True):
             clear_session()
             st.rerun()
 
