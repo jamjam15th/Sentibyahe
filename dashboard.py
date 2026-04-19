@@ -748,13 +748,15 @@ def recalculate_servqual_columns(df: pd.DataFrame, schema: dict) -> pd.DataFrame
 
 @st.fragment
 def render_dashboard():
-    df_raw = fetch_dashboard_data(admin_email, current_form_id)
-    question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
-    form_schema_full = fetch_form_questions_schema(admin_email, current_form_id)
-    form_schema = form_schema_full.get("by_prompt", {})  # Keep for backwards compatibility
-    
-    # Recalculate SERVQUAL columns based on current schema
-    df_raw = recalculate_servqual_columns(df_raw, form_schema)
+    # Show loading indicator while data loads
+    with st.spinner("📊 Loading dashboard data..."):
+        df_raw = fetch_dashboard_data(admin_email, current_form_id)
+        question_scale_map = fetch_question_scale_map(admin_email, current_form_id)
+        form_schema_full = fetch_form_questions_schema(admin_email, current_form_id)
+        form_schema = form_schema_full.get("by_prompt", {})  # Keep for backwards compatibility
+        
+        # Recalculate SERVQUAL columns based on current schema
+        df_raw = recalculate_servqual_columns(df_raw, form_schema)
 
     if df_raw.empty:
         st.markdown("""
@@ -1190,6 +1192,15 @@ def render_dashboard():
     </div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════
+    # CREATE TABS (AFTER FILTERS & KPI)
+    # ══════════════════════════════════
+    tab1, tab2, tab3, = st.tabs([
+        "🎯 Sentiment",
+        "📊 Numerical",
+        "👥 Database",
+    ])
+
+    # ══════════════════════════════════
     # TWO DICTIONARIES TO PREVENT CONFLICT
     # ══════════════════════════════════
 
@@ -1322,14 +1333,9 @@ def render_dashboard():
     }
 
     # ══════════════════════════════════
-    # TABS
+    # POPULATE TABS WITH CONTENT
     # ══════════════════════════════════
-    tab1, tab2, tab3, = st.tabs([
-        "🎯 Sentiment",
-        "📊 Numerical",
-        "👥 Database",
-    ])
-
+    
     # ─────────────────────────────────
     # TAB 1 — Sentiment
     # ─────────────────────────────────
