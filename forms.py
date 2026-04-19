@@ -374,7 +374,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)",
+                "prompt": "How would you describe the physical condition, cleanliness, and overall seating comfort of the vehicle you rode recently? (Paano mo ilalarawan ang pisikal na kondisyon, kalinisan, at pangkalahatang komportableng pag-upo sa sasakyang sinakyan mo kamakailan lang?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -390,7 +390,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)",
+                "prompt": "What can you say about the air ventilation, temperature, and general atmosphere inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin, temperatura, at pangkalahatang kapaligiran sa loob ng sasakyan?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -407,7 +407,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)",
+                "prompt": "How would you describe the overall reliability and operation of the vehicle during your entire trip? (Paano mo ilalarawan ang pangkalahatang pagiging maaasahan at maayos na takbo ng sasakyan sa buong biyahe mo?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -423,7 +423,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)",
+                "prompt": "What are your thoughts on the affordability of the fare and how your payment and change were handled by the driver/conductor? (Ano ang iyong pananaw sa halaga ng pamasahe at kung paano inasikaso ng drayber/konduktor ang iyong ibinayad at sukli?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -440,7 +440,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)",
+                "prompt": "How would you describe your experience regarding the travel time and the promptness of the ride in reaching your destination? (Paano mo ilalarawan ang iyong karanasan patungkol sa tagal ng biyahe at ang pagiging maagap ng sasakyan patungo sa iyong destinasyon?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -456,7 +456,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)",
+                "prompt": "What can you say about the attentiveness of the driver or conductor when passengers needed to get off or communicate their drop-off points? (Ano ang masasabi mo sa pagiging alisto ng driver o konduktor kapag kailangan nang bumaba o makipag-usap ng mga pasahero para sa kanilang bababaan?)",
                 "q_type": "Rating (Likert)",
                 "options": [],
                 "is_required": True,
@@ -473,7 +473,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)",
+                "prompt": "What are your thoughts on how the driver navigated the road and followed traffic rules during your trip? (Ano ang iyong pananaw sa kung paano nagmaneho at sumunod sa batas trapiko ang driver sa iyong biyahe?)",
                 "q_type": "Paragraph",
                 "options": [],
                 "is_required": True,
@@ -486,7 +486,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)",
+                "prompt": "How would you describe your overall sense of safety and security against incidents like theft or harassment while inside the vehicle? (Paano mo ilalarawan ang iyong pangkalahatang pakiramdam ng kaligtasan at seguridad laban sa mga insidente tulad ng pagnanakaw o harassment habang nasa loob ng sasakyan?)",
                 "q_type": "Paragraph",
                 "options": [],
                 "is_required": True,
@@ -500,7 +500,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)",
+                "prompt": "What can you say about the behavior, politeness, and overall treatment of passengers by the transport crew? (Ano ang masasabi mo sa pag-uugali, pagiging magalang, at pangkalahatang pagtrato ng mga tauhan sa mga pasahero?)",
                 "q_type": "Paragraph",
                 "options": [],
                 "is_required": True,
@@ -513,7 +513,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
             {
                 "form_id": form_id,
                 "admin_email": admin_email,
-                "prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)",
+                "prompt": "What are your thoughts on the transport crew's attentiveness and care for passengers who might need extra assistance, such as Senior Citizens, PWDs, or pregnant women? (Ano ang pananaw mo sa pagiging maasikaso at pag-aalaga ng mga tauhan sa mga pasaherong maaaring mangailangan ng karagdagang tulong, tulad ng Senior Citizens, PWDs, o mga buntis?)",
                 "q_type": "Paragraph",
                 "options": [],
                 "is_required": True,
