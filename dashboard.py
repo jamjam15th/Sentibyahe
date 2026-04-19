@@ -429,7 +429,7 @@ def fetch_dashboard_data(email: str, form_id: str) -> pd.DataFrame:
         st.warning(f"Could not load responses: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=5)
 def fetch_question_scale_map(email: str, form_id: str) -> dict:
     """Return latest scale_max per question prompt from form schema."""
     try:
@@ -652,7 +652,7 @@ def _format_demo_cell(v):
 # ══════════════════════════════════════════
 # LIVE FRAGMENT (runs every 5 s)
 # ══════════════════════════════════════════
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=5)
 def fetch_form_questions_schema(email: str, form_id: str) -> dict:
     """Fetch current form question schema to get SERVQUAL dimension tags.
     Returns a dict with both 'by_prompt' and 'by_id' keys for flexible lookups.
@@ -836,23 +836,25 @@ def render_dashboard():
             (df["raw_feedback"].str.strip() != "")
         ]
         if not pending_rows.empty:
-            batch_updates = []
-            for _, row in pending_rows.iterrows():
-                label, score = analyze_text(str(row["raw_feedback"]).strip())
-                df.loc[df["id"] == row["id"], sent_col]          = label
-                df.loc[df["id"] == row["id"], "sentiment_score"] = score
-                batch_updates.append({
-                    "id": row["id"],
-                    "sentiment_status": label,
-                    "sentiment_score": score,
-                })
-            persist_sentiment_batch(batch_updates)
+            with st.spinner(f"🤖 Analyzing sentiment for {len(pending_rows)} response(s)..."):
+                batch_updates = []
+                for _, row in pending_rows.iterrows():
+                    label, score = analyze_text(str(row["raw_feedback"]).strip())
+                    df.loc[df["id"] == row["id"], sent_col]          = label
+                    df.loc[df["id"] == row["id"], "sentiment_score"] = score
+                    batch_updates.append({
+                        "id": row["id"],
+                        "sentiment_status": label,
+                        "sentiment_score": score,
+                    })
+                persist_sentiment_batch(batch_updates)
     
     # ── Analyze per-question sentiments ──
     if "question_sentiments" in df.columns:
         pending_q_rows = df[df["question_sentiments"].notna()].to_dict('records')
         if pending_q_rows:
-            analyze_per_question_sentiments(pending_q_rows)
+            with st.spinner(f"🤖 Analyzing per-question sentiments for {len(pending_q_rows)} response(s)..."):
+                analyze_per_question_sentiments(pending_q_rows)
 
     # ── Counts ──
     if sent_col in df.columns:
@@ -1076,87 +1078,88 @@ def render_dashboard():
     # ═══════════════════════════════════════════════════════
     # RECALCULATE METRICS FOR FILTERED DATA
     # ═══════════════════════════════════════════════════════
-    total = len(df)
-    
-    # Recalculate sentiment rates for filtered data
-    all_sentiments_for_rate_filtered = []
-    for _, row in df_sent.iterrows():
-        response_level_sent = str(row.get(sent_col, "")).upper().strip() if sent_col in row else ""
-        question_sentiments = row.get("question_sentiments", {})
+    with st.spinner("📊 Calculating metrics..."):
+        total = len(df)
         
-        has_question_sentiments = False
-        if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
-            for q_id, q_data in question_sentiments.items():
-                if isinstance(q_data, dict):
-                    if q_data.get("enable_sentiment") is not False:
-                        sentiment = str(q_data.get("sentiment", "")).upper().strip()
-                        if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
-                            has_question_sentiments = True
-                            all_sentiments_for_rate_filtered.append(sentiment)
+        # Recalculate sentiment rates for filtered data
+        all_sentiments_for_rate_filtered = []
+        for _, row in df_sent.iterrows():
+            response_level_sent = str(row.get(sent_col, "")).upper().strip() if sent_col in row else ""
+            question_sentiments = row.get("question_sentiments", {})
+            
+            has_question_sentiments = False
+            if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
+                for q_id, q_data in question_sentiments.items():
+                    if isinstance(q_data, dict):
+                        if q_data.get("enable_sentiment") is not False:
+                            sentiment = str(q_data.get("sentiment", "")).upper().strip()
+                            if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+                                has_question_sentiments = True
+                                all_sentiments_for_rate_filtered.append(sentiment)
+            
+            if not has_question_sentiments and response_level_sent and response_level_sent != "PENDING":
+                all_sentiments_for_rate_filtered.append(response_level_sent)
         
-        if not has_question_sentiments and response_level_sent and response_level_sent != "PENDING":
-            all_sentiments_for_rate_filtered.append(response_level_sent)
-    
-    total_sentiments_filtered = len(all_sentiments_for_rate_filtered)
-    pos_count = all_sentiments_for_rate_filtered.count("POSITIVE")
-    pos_rate = (pos_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
-    neu_count = all_sentiments_for_rate_filtered.count("NEUTRAL")
-    neu_rate = (neu_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
-    neg_count = all_sentiments_for_rate_filtered.count("NEGATIVE")
-    neg_rate = (neg_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
-    
-    # Recalculate SERVQUAL averages for filtered data
-    if present_servqual_dims:
-        normalized_df_filtered = df[list(present_servqual_dims.values())].copy()
-        observed_max_filtered = normalized_df_filtered.max().max()
-        if pd.isna(observed_max_filtered) or observed_max_filtered <= 0:
-            scale_max = 5
+        total_sentiments_filtered = len(all_sentiments_for_rate_filtered)
+        pos_count = all_sentiments_for_rate_filtered.count("POSITIVE")
+        pos_rate = (pos_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
+        neu_count = all_sentiments_for_rate_filtered.count("NEUTRAL")
+        neu_rate = (neu_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
+        neg_count = all_sentiments_for_rate_filtered.count("NEGATIVE")
+        neg_rate = (neg_count / total_sentiments_filtered * 100) if total_sentiments_filtered > 0 else 0
+        
+        # Recalculate SERVQUAL averages for filtered data
+        if present_servqual_dims:
+            normalized_df_filtered = df[list(present_servqual_dims.values())].copy()
+            observed_max_filtered = normalized_df_filtered.max().max()
+            if pd.isna(observed_max_filtered) or observed_max_filtered <= 0:
+                scale_max = 5
+            else:
+                scale_max = float(observed_max_filtered) if observed_max_filtered > 5 else 5
+            
+            for col in present_servqual_dims.values():
+                normalized_df_filtered[col] = normalized_df_filtered[col].apply(lambda x: normalize_to_5(x, scale_max))
+            
+            overall_avg = normalized_df_filtered[list(present_servqual_dims.values())].mean().mean()
+            if pd.isna(overall_avg):
+                overall_avg = 0.0
         else:
-            scale_max = float(observed_max_filtered) if observed_max_filtered > 5 else 5
-        
-        for col in present_servqual_dims.values():
-            normalized_df_filtered[col] = normalized_df_filtered[col].apply(lambda x: normalize_to_5(x, scale_max))
-        
-        overall_avg = normalized_df_filtered[list(present_servqual_dims.values())].mean().mean()
-        if pd.isna(overall_avg):
             overall_avg = 0.0
-    else:
-        overall_avg = 0.0
-    
-    # Recalculate dimension sentiment data for filtered data
-    dimension_sentiment_data_kpi = {
-        "Tangibles": {"positive": 0, "neutral": 0, "negative": 0},
-        "Reliability": {"positive": 0, "neutral": 0, "negative": 0},
-        "Responsiveness": {"positive": 0, "neutral": 0, "negative": 0},
-        "Assurance": {"positive": 0, "neutral": 0, "negative": 0},
-        "Empathy": {"positive": 0, "neutral": 0, "negative": 0},
-    }
-    
-    for _, row in df_sent.iterrows():
-        question_sentiments = row.get("question_sentiments", {})
-        if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
-            for q_id, q_data in question_sentiments.items():
-                if isinstance(q_data, dict):
-                    if q_data.get("enable_sentiment") is not False:
-                        sentiment = str(q_data.get("sentiment", "")).upper().strip()
-                        dimension = q_data.get("dimension")
-                        if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"] and dimension in dimension_sentiment_data_kpi:
-                            dimension_sentiment_data_kpi[dimension][sentiment.lower()] += 1
-    
-    dimension_net_scores_kpi = {}
-    dimension_totals_kpi = {}
-    for dim, counts in dimension_sentiment_data_kpi.items():
-        total = counts["positive"] + counts["neutral"] + counts["negative"]
-        dimension_totals_kpi[dim] = total
-        if total > 0:
-            net_score = ((counts["positive"] - counts["negative"]) / total) * 100
-            dimension_net_scores_kpi[dim] = net_score
-        else:
-            dimension_net_scores_kpi[dim] = 0
-    
-    has_dimension_sentiment_kpi = any(dimension_totals_kpi.values())
-    total = len(df)  # Update total for KPI display
-    
+        
+        # Recalculate dimension sentiment data for filtered data
+        dimension_sentiment_data_kpi = {
+            "Tangibles": {"positive": 0, "neutral": 0, "negative": 0},
+            "Reliability": {"positive": 0, "neutral": 0, "negative": 0},
+            "Responsiveness": {"positive": 0, "neutral": 0, "negative": 0},
+            "Assurance": {"positive": 0, "neutral": 0, "negative": 0},
+            "Empathy": {"positive": 0, "neutral": 0, "negative": 0},
+        }
+        
+        for _, row in df_sent.iterrows():
+            question_sentiments = row.get("question_sentiments", {})
+            if isinstance(question_sentiments, dict) and len(question_sentiments) > 0:
+                for q_id, q_data in question_sentiments.items():
+                    if isinstance(q_data, dict):
+                        if q_data.get("enable_sentiment") is not False:
+                            sentiment = str(q_data.get("sentiment", "")).upper().strip()
+                            dimension = q_data.get("dimension")
+                            if sentiment in ["POSITIVE", "NEUTRAL", "NEGATIVE"] and dimension in dimension_sentiment_data_kpi:
+                                dimension_sentiment_data_kpi[dimension][sentiment.lower()] += 1
+        
+        dimension_net_scores_kpi = {}
+        dimension_totals_kpi = {}
+        for dim, counts in dimension_sentiment_data_kpi.items():
+            total = counts["positive"] + counts["neutral"] + counts["negative"]
+            dimension_totals_kpi[dim] = total
+            if total > 0:
+                net_score = ((counts["positive"] - counts["negative"]) / total) * 100
+                dimension_net_scores_kpi[dim] = net_score
+            else:
+                dimension_net_scores_kpi[dim] = 0
+        
+        has_dimension_sentiment_kpi = any(dimension_totals_kpi.values())
+        total = len(df)  # Update total for KPI display
+
     # ══════════════════════════════════
     # KPI RIBBON
     # ══════════════════════════════════
