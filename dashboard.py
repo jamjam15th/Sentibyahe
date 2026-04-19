@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 import plotly.graph_objects as go
 import re
+import json
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
 from forms import (
@@ -50,6 +51,10 @@ st.markdown("""
         opacity: 1 !important;
         transition: none !important;
     }
+
+    .stAppDeployButton { display: none !important; }
+
+    .stAppToolbar { background: #f0f4f8;}
 
     /* Target the specific overlay Streamlit adds during fragment refresh */
     [data-testid="stFragment"] > div {
@@ -344,6 +349,10 @@ if not admin_email:
     st.error("🔒 Please log in to view the dashboard.")
     st.stop()
 
+# Track page for detecting navigation back to builder
+st.session_state._prev_page = st.session_state.get("current_page", "")
+st.session_state.current_page = "dashboard"
+
 # Initialize multi-form session state
 init_form_session_state(admin_email)
 current_form_id = get_current_form_id()  # Get from session state, not ensure_form_exists
@@ -498,8 +507,7 @@ def analyze_per_question_sentiments(rows: list[dict]):
 st.markdown("""
 <div class="dash-header">
   <div>
-    <h1>📊 Sentiment Dashboard</h1>
-    <p class="sub">Land Public Transportation Experience · SERVQUAL Analysis</p>
+    <h1>📊 Dashboard</h1>
   </div>
   <div class="live-badge"><span class="live-dot"></span> LIVE SYNC</div>
 </div>
@@ -584,46 +592,34 @@ def _explode_demo_series(series: pd.Series) -> pd.Series:
     return pd.Series(rows, dtype=str)
 
 def _demo_chart_specs(demo_df: pd.DataFrame) -> list[tuple[str, str]]:
+    """Build specs from whatever demographic columns exist in the dataframe."""
     specs: list[tuple[str, str]] = []
-    for col, lab in [
-        ("1. Age / Edad", "Age Bracket"),
-        ("2. Gender / Kasarian", "Gender"),
-        ("3. Occupational Status / Katayuan sa Trabaho", "Occupation"),
-    ]:
-        if col in demo_df.columns:
-            specs.append((col, lab))
-    for tk in TRANSPORT_DEMO_KEYS:
-        if tk in demo_df.columns:
-            specs.append((tk, "Land public transportation mode"))
-            break
-    commute_c = "5. Frequency of Commuting / Gaano ka kadalas sumakay sa isang linggo?"
-    if commute_c in demo_df.columns:
-        specs.append((commute_c, "Commute Frequency"))
+    for col in demo_df.columns:
+        # Use the actual column name as both the column reference and display label
+        label = col if len(col) <= 48 else col[:45] + "…"
+        specs.append((col, label))
     return specs
 
 def _demo_chart_specs_all(demo_df: pd.DataFrame, custom_demographic_prompts: list = None) -> list[tuple[str, str]]:
-    """Build demo chart specs with custom demographic questions prioritized at the top."""
+    """Build demo chart specs from all available demographic columns."""
     if custom_demographic_prompts is None:
         custom_demographic_prompts = []
     
     specs: list[tuple[str, str]] = []
+    covered = set()
     
     # First: add custom demographic questions (user-tagged in form builder)
     for col in demo_df.columns:
         if col in custom_demographic_prompts:
-            lab = col if len(col) <= 48 else col[:45] + "…"
-            specs.append((col, lab))
+            label = col if len(col) <= 48 else col[:45] + "…"
+            specs.append((col, label))
+            covered.add(col)
     
-    # Second: add standard demographic questions
-    standard_specs = _demo_chart_specs(demo_df)
-    covered = {c for c, _ in specs} | {c for c, _ in standard_specs}
-    specs.extend(standard_specs)
-    
-    # Third: add any remaining columns as "other"
-    for col in sorted(demo_df.columns):
+    # Second: add all remaining columns
+    for col in demo_df.columns:
         if col not in covered:
-            lab = col if len(col) <= 48 else col[:45] + "…"
-            specs.append((col, lab))
+            label = col if len(col) <= 48 else col[:45] + "…"
+            specs.append((col, label))
     
     return specs
 
@@ -669,6 +665,7 @@ def fetch_form_questions_schema(email: str, form_id: str) -> dict:
             dimension_info = {
                 "dimension": row.get("servqual_dimension"),
                 "q_type": row.get("q_type"),
+                "prompt": prompt,  # Also store prompt in by_id for lookups
             }
             if prompt:
                 schema_by_prompt[prompt] = dimension_info
@@ -756,7 +753,7 @@ def render_dashboard():
     if df_raw.empty:
         st.markdown("""
         <div class="empty-tab">
-          <div class="icon">⏳</div>
+          <div class="icon">☹️</div>
           <p>No responses yet. Share your survey link to start collecting data.</p>
         </div>""", unsafe_allow_html=True)
         return
@@ -1155,7 +1152,7 @@ def render_dashboard():
     # ══════════════════════════════════
     # KPI RIBBON
     # ══════════════════════════════════
-    k1, k3 = st.columns(2)
+    k1, k2 = st.columns(2)
 
     k1.markdown(f"""<div class="kpi-card">
       <div class="kpi-title">Total Responses</div>
@@ -1163,17 +1160,6 @@ def render_dashboard():
       <div class="kpi-sub">{date_from} → {date_to}</div>
     </div>""", unsafe_allow_html=True)
 
-    servqual_display = (
-        f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>"
-        if has_servqual_data else "N/A"
-    )
-    servqual_subtext = "Avg of 5 SERVQUAL dimensions" if has_servqual_data else "No SERVQUAL tags yet"
-    # k2.markdown(f"""<div class="kpi-card">
-    #   <div class="kpi-title">Overall SERVQUAL</div>
-    #   <div class="kpi-value gold">{servqual_display}</div>
-    #   <div class="kpi-sub">{servqual_subtext}</div>
-    # </div>""", unsafe_allow_html=True)
-    
     # Calculate SERVQUAL Sentiment from dimension_net_scores_kpi
     if has_dimension_sentiment_kpi:
         active_sentiment_dims = [d for d in ["Tangibles", "Reliability", "Responsiveness", "Assurance", "Empathy"] if dimension_totals_kpi.get(d, 0) > 0]
@@ -1191,7 +1177,7 @@ def render_dashboard():
         sentiment_subtext = "No open-ended responses yet"
         sentiment_color = '#8b9dc3'
     
-    k3.markdown(f"""<div class="kpi-card">
+    k2.markdown(f"""<div class="kpi-card">
       <div class="kpi-title">Overall SERVQUAL Sentiment Net Score</div>
       <div class="kpi-value" style="color:{sentiment_color};">{sentiment_display}</div>
       <div class="kpi-sub">{sentiment_subtext}</div>
@@ -1333,468 +1319,16 @@ def render_dashboard():
     # TABS
     # ══════════════════════════════════
     tab1, tab2, tab3, = st.tabs([
-        "📊 Numerical",
         "🎯 Sentiment",
+        "📊 Numerical",
         "👥 Database",
     ])
 
     # ─────────────────────────────────
-    # TAB 1 — SERVQUAL RADAR
+    # TAB 1 — Sentiment
     # ─────────────────────────────────
+
     with tab1:
-        with st.expander("🕸 Servqual Radar", expanded=True):
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-            <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
-                SERVQUAL Guide (Likert Scale Only)
-            </div>
-            <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This radar summarizes <strong>land public transportation</strong> feedback from your survey—broadly:
-                <strong>service experience</strong>, <strong>vehicles and facilities</strong>, <strong>people involved</strong> (e.g. crew and passengers),
-                and how riders see the <strong>current situation</strong> (e.g. delays, travel conditions, or how <strong>cost and operating pressures</strong> affect the trip).
-                Your exact topics depend on how you wrote your Likert items; the radar only groups them under SERVQUAL.<br>
-                Scores come only from <strong>Likert averages</strong> tagged to SERVQUAL dimensions
-                (Tangibles, Reliability, Responsiveness, Assurance, Empathy).<br>
-                <strong>Scale conversion:</strong> any Likert scale with values above <strong>5</strong>
-                is normalized to a <strong>1 to 5</strong> scale for consistent SERVQUAL computation.<br>
-                <strong>How to read:</strong> each spoke is one dimension on a <strong>1 to 5</strong> scale;
-                farther from the center means stronger perceived quality on that dimension.<br>
-                <strong>How to use:</strong> use this chart to see what dimension-level data you already have from discussions
-                about land public transportation in your responses.
-            </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if not has_servqual_data and not has_general_ratings:
-                st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
-                <p>No SERVQUAL dimension scores or General Ratings yet.<br><br>
-                In <strong>Form Builder</strong>, add Likert questions to your form.
-                Assign them to SERVQUAL dimensions (Tangibles, Reliability, Responsiveness, Assurance, Empathy)
-                for dimension-specific tracking, or leave them untagged for <em>General Ratings</em>.</p>
-                </div>""", unsafe_allow_html=True)
-            else:
-                # Recalculate radar data using FILTERED data
-                normalized_df_filtered = df[list(present_servqual_dims.values())].copy()
-                
-                observed_max_filtered = normalized_df_filtered.max().max()
-                if pd.isna(observed_max_filtered) or observed_max_filtered <= 0:
-                    scale_max_filtered = 5
-                else:
-                    scale_max_filtered = float(observed_max_filtered) if observed_max_filtered > 5 else 5
-                
-                for col in present_servqual_dims.values():
-                    normalized_df_filtered[col] = normalized_df_filtered[col].apply(lambda x: normalize_to_5(x, scale_max_filtered))
-                
-                # Build radar data from SERVQUAL dimensions and/or General Ratings
-                dim_means = {}
-                
-                # Add SERVQUAL dimensions if present
-                if has_servqual_data:
-                    dim_means.update({
-                        k: float(normalized_df_filtered[v].mean())
-                        for k, v in present_servqual_dims.items()
-                        if not pd.isna(normalized_df_filtered[v].mean())
-                    })
-                
-                # Add General Ratings if present
-                if has_general_ratings:
-                    general_ratings_filtered = []
-                    for _, row in df.iterrows():
-                        if GENERAL_RATINGS_COL in row and pd.notna(row[GENERAL_RATINGS_COL]):
-                            general_ratings_filtered.append(row[GENERAL_RATINGS_COL])
-                    if general_ratings_filtered:
-                        gen_ratings_avg = sum(general_ratings_filtered) / len(general_ratings_filtered)
-                        dim_means["General Ratings"] = gen_ratings_avg
-                
-                labels = list(dim_means.keys())
-                values = list(dim_means.values())
-
-                if not values or len(values) == 0:
-                    st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
-                    <p>No dimension scores match the current filters.<br>
-                    Try adjusting your filters to see the SERVQUAL radar.</p>
-                    </div>""", unsafe_allow_html=True)
-                else:
-                    col_r1, col_r2 = st.columns([3, 2])
-                    
-                    with col_r1:
-                        st.markdown('<div class="section-head">SERVQUAL Dimension Averages</div>', unsafe_allow_html=True)
-                        v_closed = values + [values[0]]
-                        l_closed = labels + [labels[0]]
-
-                        fig = go.Figure()
-                        fig.add_trace(go.Scatterpolar(
-                            r=v_closed,
-                            theta=l_closed,
-                            fill="toself",
-                            fillcolor="rgba(26,50,99,0.25)",
-                            line=dict(color="rgb(26,50,99)", width=3),
-                            marker=dict(size=8, color="#ffc570"),
-                            name="Likert (Tagged)",
-                            showlegend=True,
-                        ))
-                        
-                        # No longer need separate untagged overlay since it's now in dim_means
-                        
-                        fig.update_layout(
-                            polar=dict(
-                                bgcolor="rgba(0,0,0,0)",
-                                radialaxis=dict(
-                                    visible=True,
-                                    range=[0, 5],
-                                    tickvals=[1, 2, 3, 4, 5],
-                                    tickfont=dict(size=10, color="rgb(120,148,172)"),
-                                gridcolor="rgba(84,119,146,0.2)",
-                                linecolor="rgba(84,119,146,0.2)",
-                            ),
-                            angularaxis=dict(
-                                tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
-                                gridcolor="rgba(84,119,146,0.15)",
-                            ),
-                        ),
-                            showlegend=True,
-                            legend=dict(x=1.05, y=1, font=dict(size=10)),
-                            margin=dict(t=40, b=40, l=60, r=100),
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            height=360,
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-
-                    with col_r2:
-                        st.markdown('<div class="section-head">Dimension Scores</div>', unsafe_allow_html=True)
-                        for dim, mean_val in dim_means.items():
-                            # Rename "General Ratings" to "Untagged Ratings" for clarity
-                            display_dim = "Untagged Ratings" if dim == "General Ratings" else dim
-                            pct   = (mean_val / 5) * 100
-                            color = "#4a7c59" if mean_val >= 4 else "#8b9dc3" if mean_val >= 3 else "#b03a2e"
-                            st.markdown(f"""
-                            <div style="margin-bottom:.7rem;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:.2rem;">
-                                <span style="font-size:.78rem;font-weight:700;color:rgb(26,50,99);">{display_dim}</span>
-                                <span style="font-size:.78rem;font-weight:700;color:{color};">{mean_val:.2f}/5</span>
-                            </div>
-                            <div style="background:rgba(84,119,146,0.12);border-radius:999px;height:7px;overflow:hidden;">
-                                <div style="width:{pct:.1f}%;height:100%;border-radius:999px;background:{color};transition:width .4s;"></div>
-                            </div>
-                            </div>""", unsafe_allow_html=True)
-                    
-                    # ── CONCLUSION FOR SERVQUAL RADAR (LIKERT SCORES) ──
-                    st.markdown("---")
-                    st.markdown('<div class="section-head">📋 Analysis Conclusion</div>', unsafe_allow_html=True)
-
-                    def get_likert_tier(score):
-                        if score >= 4:
-                            return "strong"
-                        elif score >= 3:
-                            return "moderate"
-                        else:
-                            return "weak"
-
-                    tier_config = {
-                        "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
-                        "moderate": ("🔶", "Needs monitoring", "#8b6914", "rgba(255,197,112,0.10)", "rgba(255,197,112,0.35)"),
-                        "weak":     ("🚨", "Needs attention (Negative)",  "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
-                    }
-
-                    all_scores = list(dim_means.values())
-                    # Note: General Ratings is already included in dim_means, no need to append again
-
-                    avg_satisfaction = sum(all_scores) / len(all_scores) if all_scores else 0
-
-                    if avg_satisfaction >= 4:
-                        overall_tier = "strong"
-                        overall_label = "Strong overall satisfaction"
-                    elif avg_satisfaction >= 3:
-                        overall_tier = "moderate"
-                        overall_label = "Moderate overall satisfaction"
-                    else:
-                        overall_tier = "weak"
-                        overall_label = "Low overall satisfaction"
-
-                    overall_emoji, _, overall_color, overall_bg, _ = tier_config[overall_tier]
-
-                    sorted_dims = sorted(dim_means.items(), key=lambda x: x[1])
-                    weakest_dims = [(d, s) for d, s in sorted_dims if s < 3]
-                    watch_dims   = [(d, s) for d, s in sorted_dims if 3 <= s < 4]
-                    strong_dims  = [(d, s) for d, s in sorted_dims if s >= 4]
-
-                    overall_desc_parts = []
-                    if strong_dims:
-                        overall_desc_parts.append(
-                            f"<strong>{', '.join(d for d,_ in strong_dims)}</strong> "
-                            f"{'are' if len(strong_dims) > 1 else 'is'} performing well."
-                        )
-                    if watch_dims:
-                        overall_desc_parts.append(
-                            f"<strong>{', '.join(d for d,_ in watch_dims)}</strong> "
-                            f"{'show' if len(watch_dims) > 1 else 'shows'} room for improvement."
-                        )
-                    if weakest_dims:
-                        overall_desc_parts.append(
-                            f"<strong>{', '.join(d for d,_ in weakest_dims)}</strong> "
-                            f"{'require' if len(weakest_dims) > 1 else 'requires'} urgent attention."
-                        )
-                    overall_desc = " ".join(overall_desc_parts) if overall_desc_parts else "Collect more responses to generate a detailed signal."
-
-                    st.markdown(f"""
-                    <div style="border:1px solid rgba(26,50,99,0.12);border-radius:12px;overflow:hidden;margin-bottom:1.2rem;">
-                    <div style="background:{overall_bg};padding:1.1rem 1.3rem;border-bottom:1px solid rgba(26,50,99,0.08);">
-                        <div style="font-size:0.65rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">Overall SERVQUAL Signal</div>
-                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                        <div style="font-size:2rem;font-weight:700;color:{overall_color};line-height:1;">{avg_satisfaction:.2f}<span style="font-size:1rem;color:rgb(120,148,172);font-weight:400;">/5</span></div>
-                        <div>
-                            <div style="font-size:1rem;font-weight:700;color:{overall_color};">{overall_emoji} {overall_label}</div>
-                            <div style="font-size:0.78rem;color:rgb(80,110,140);margin-top:2px;">{overall_desc}</div>
-                        </div>
-                        </div>
-                    </div>
-
-                    <div style="display:flex;gap:0;border-bottom:1px solid rgba(26,50,99,0.08);">
-                        <div style="flex:1;padding:.5rem .9rem;background:rgba(176,58,46,0.05);border-right:1px solid rgba(26,50,99,0.06);">
-                        <div style="font-size:.6rem;font-weight:700;color:#b03a2e;text-transform:uppercase;letter-spacing:.08em;">Below 3.0</div>
-                        <div style="font-size:.7rem;color:rgb(120,148,172);">Needs attention</div>
-                        </div>
-                        <div style="flex:1;padding:.5rem .9rem;background:rgba(255,197,112,0.07);border-right:1px solid rgba(26,50,99,0.06);">
-                        <div style="font-size:.6rem;font-weight:700;color:#8b6914;text-transform:uppercase;letter-spacing:.08em;">3.0 – 3.99</div>
-                        <div style="font-size:.7rem;color:rgb(120,148,172);">Monitor</div>
-                        </div>
-                        <div style="flex:1;padding:.5rem .9rem;background:rgba(74,124,89,0.05);">
-                        <div style="font-size:.6rem;font-weight:700;color:#4a7c59;text-transform:uppercase;letter-spacing:.08em;">4.0 – 5.0</div>
-                        <div style="font-size:.7rem;color:rgb(120,148,172);">Performing well</div>
-                        </div>
-                    </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    st.markdown('<div style="font-size:0.72rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:0.8rem;">Dimension-by-dimension breakdown</div>', unsafe_allow_html=True)
-
-                    likert_cols = st.columns(len(dim_means))
-                    for col_idx, (dim, score) in enumerate(dim_means.items()):
-                        tier = get_likert_tier(score)
-                        emoji_t, label_t, color_t, bg_t, border_color_t = tier_config[tier]
-                        
-                        # USE THE LIKERT DICTIONARY HERE
-                        desc_tuple = likert_dimension_descriptions.get(dim)
-                        desc = desc_tuple[0] if desc_tuple else ""
-                        insight_map = desc_tuple[1] if desc_tuple else {}
-                        insight = insight_map.get(tier, "")
-                        action = insight_map.get(f"action_{tier}", "")
-
-                        pct = (score / 5) * 100
-
-                        with likert_cols[col_idx]:
-                            st.markdown(f"""
-                            <div style="border:1px solid rgba(26,50,99,0.10);border-top:3px solid {color_t};border-radius:10px;padding:0.9rem 1rem;background:{bg_t};height:100%;">
-                            <div style="font-weight:700;color:rgb(26,50,99);font-size:0.88rem;margin-bottom:0.2rem;">{dim}</div>
-                            <div style="font-size:0.63rem;color:rgb(120,148,172);margin-bottom:0.6rem;line-height:1.4;">{desc}</div>
-                            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:0.4rem;">
-                            <span style="font-size:1.55rem;font-weight:700;color:{color_t};line-height:1;">{score:.2f}</span>
-                            <span style="font-size:0.75rem;color:rgb(120,148,172);">/5</span>
-                        </div>
-                        <div style="background:rgba(84,119,146,0.12);border-radius:999px;height:5px;overflow:hidden;margin-bottom:0.55rem;">
-                            <div style="width:{pct:.1f}%;height:100%;border-radius:999px;background:{color_t};"></div>
-                        </div>
-                        <div style="display:inline-flex;align-items:center;gap:4px;border:1px solid {border_color_t};border-radius:999px;padding:.15rem .6rem;font-size:.62rem;font-weight:700;color:{color_t};margin-bottom:.65rem;">{emoji_t} {label_t}</div>
-                        <div style="font-size:.72rem;color:rgb(60,90,120);line-height:1.55;margin-bottom:.5rem;">{insight}</div>
-                        <div style="border-left:3px solid {border_color_t};padding-left:.6rem;font-size:.7rem;color:rgb(80,110,140);line-height:1.5;font-style:italic;">{action}</div>
-                        </div>""", unsafe_allow_html=True)
-
-                    if weakest_dims or watch_dims or strong_dims:
-                        st.markdown('<div style="margin-top:1.2rem;"></div>', unsafe_allow_html=True)
-                        st.markdown('<div style="font-size:0.72rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:0.7rem;">Action priority</div>', unsafe_allow_html=True)
-
-                        triage_html = '<div style="display:flex;flex-direction:column;gap:8px;">'
-
-                        if weakest_dims:
-                            names = ", ".join(f"{d} ({s:.2f})" for d, s in weakest_dims)
-                            triage_html += f"""
-                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(176,58,46,0.06);border:1px solid rgba(176,58,46,0.2);border-radius:8px;">
-                            <span style="font-size:.65rem;font-weight:700;background:rgba(176,58,46,0.12);color:#b03a2e;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🚨 Urgent</span>
-                            <div>
-                                <div style="font-size:.78rem;font-weight:700;color:#b03a2e;margin-bottom:2px;">{names}</div>
-                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps. Check the <strong>Quantitative Tab (Likert Response Log)</strong> to pinpoint exactly which Likert metric is pulling the dimension down before planning remediation.</div>
-                            </div>
-                            </div>"""
-
-                        if watch_dims:
-                            names = ", ".join(f"{d} ({s:.2f})" for d, s in watch_dims)
-                            triage_html += f"""
-                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(255,197,112,0.08);border:1px solid rgba(255,197,112,0.3);border-radius:8px;">
-                            <span style="font-size:.65rem;font-weight:700;background:rgba(255,197,112,0.2);color:#8b6914;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🔶 Monitor</span>
-                            <div>
-                                <div style="font-size:.78rem;font-weight:700;color:#8b6914;margin-bottom:2px;">{names}</div>
-                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Borderline scores (3.0–3.99) signal acceptable but inconsistent service. These dimensions are vulnerable to operational disruptions. Targeted improvements in scheduling, communication, or facilities could push these above 4.0.</div>
-                            </div>
-                            </div>"""
-
-                        if strong_dims:
-                            names = ", ".join(f"{d} ({s:.2f})" for d, s in strong_dims)
-                            triage_html += f"""
-                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(74,124,89,0.06);border:1px solid rgba(74,124,89,0.2);border-radius:8px;">
-                            <span style="font-size:.65rem;font-weight:700;background:rgba(74,124,89,0.12);color:#4a7c59;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">✅ Sustain</span>
-                            <div>
-                                <div style="font-size:.78rem;font-weight:700;color:#4a7c59;margin-bottom:2px;">{names}</div>
-                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores at 4.0 or above indicate genuine commuter satisfaction. Document what is driving these high scores and replicate those practices across weaker dimensions and underperforming routes.</div>
-                            </div>
-                            </div>"""
-
-                        triage_html += '</div>'
-                        st.markdown(triage_html, unsafe_allow_html=True)
-            
-        # ── Quantitative Analysis Data ──
-        st.markdown("""<div style="height: 2rem;"></div>""", unsafe_allow_html=True)
-        with st.expander("📊 Quantitative Data", expanded=True):
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
-                Quantitative Guide
-              </div>
-              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation—service quality, vehicles, experience, or anything you asked on a scale.<br><br>
-                <strong>Score by Selected Context:</strong> average SERVQUAL (and general) scores grouped by a field from the respondent profile (e.g. how often they ride, mode type, etc.).<br>
-                <strong>How to use:</strong> pick a grouping that fits your research question, then see which segments score higher or lower on each dimension.<br><br>
-                <strong>How to use:</strong> name strengths and problem areas in your analysis and tie them to the SERVQUAL framework.<br><br>
-                <strong>Likert Response Log:</strong> each numeric answer with question text and time.<br>
-                <strong>How to use:</strong> audit the data, spot outliers, and support tables or appendices with raw-scale answers.
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if not has_any_rating_data:
-                st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
-                  <p>No rating scores available yet.<br>
-                  Assign SERVQUAL dimensions or leave questions untagged
-                  (they appear as General Ratings) in Form Builder.</p>
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
-                likert_rows = []
-                for _, row in df.iterrows():
-                    ans_map = row.get("answers", {})
-                    submitted = row.get("created_at", None)
-                    if not isinstance(ans_map, dict):
-                        continue
-                    for question, answer in ans_map.items():
-                        score = pd.to_numeric(answer, errors="coerce")
-                        if pd.Series(score).isna().all():
-                            continue
-                        question_text = str(question)
-                        base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
-                        schema_scale = question_scale_map.get(question_text)
-                        if schema_scale is None:
-                            schema_scale = question_scale_map.get(base_question)
-                        if schema_scale is not None and schema_scale > 1:
-                            q_scale_max = float(schema_scale)
-                        else:
-                            q_scores = pd.to_numeric(
-                                df["answers"].apply(
-                                    lambda a: a.get(question) if isinstance(a, dict) else None
-                                ),
-                                errors="coerce",
-                            )
-                            q_max = q_scores.max()
-                            q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
-                        score_norm = normalize_to_5(float(score), q_scale_max)
-                        scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
-                        
-                        # Get SERVQUAL dimension for this question
-                        q_dimension = form_schema.get(question_text, {}).get("dimension")
-                        if q_dimension is None:
-                            q_dimension = form_schema.get(base_question, {}).get("dimension")
-                        dimension_display = q_dimension if q_dimension else "Untagged"
-                        
-                        likert_rows.append({
-                            "Question": str(question),
-                            "Dimension": dimension_display,
-                            "Score": int(score) if float(score).is_integer() else float(score),
-                            "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
-                            "ScoreNormalized": round(float(score_norm), 2),
-                            "Submitted": submitted,
-                        })
-
-                if likert_rows:
-                    likert_df = pd.DataFrame(likert_rows)
-                    likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
-                    likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
-
-                    q_avg = (
-                        likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
-                        .mean()
-                        .rename(columns={"ScoreNormalized": "Average Score"})
-                    )
-                    q_avg["Responses"] = likert_df.groupby("Question").size().values
-                    q_avg = q_avg.sort_values("Average Score", ascending=False)
-                    top_n = q_avg.head(5)
-                    bottom_n = q_avg.tail(5)
-                    top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
-                    top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
-
-                    tb_chart = (
-                        alt.Chart(top_bottom)
-                        .mark_bar(cornerRadiusEnd=4)
-                        .encode(
-                            y=alt.Y("Question:N", sort="-x", title="Question"),
-                            x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
-                            color=alt.Color(
-                                "Average Score:Q",
-                                scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
-                                legend=alt.Legend(title="Score (/5)"),
-                            ),
-                            tooltip=[
-                                alt.Tooltip("Question:N"),
-                                alt.Tooltip("Average Score:Q", format=".2f"),
-                                alt.Tooltip("Responses:Q"),
-                                alt.Tooltip("Category:N", title="Group"),
-                            ],
-                        )
-                        .properties(height=280)
-                    )
-                    st.altair_chart(tb_chart, use_container_width=True)
-                    
-                    st.markdown('<div class="section-head">Score Distribution</div>', unsafe_allow_html=True)
-                    st.caption("Breakdown of how many respondents gave each score for each question.")
-                    
-                    # Create score distribution table
-                    score_dist = []
-                    for question in likert_df["Question"].unique():
-                        q_data = likert_df[likert_df["Question"] == question]
-                        q_dimension = q_data["Dimension"].iloc[0] if len(q_data) > 0 else "Untagged"
-                        
-                        # Get the scale max for this question
-                        scale_str = q_data["Score (Selected Scale)"].iloc[0] if len(q_data) > 0 else "0/5"
-                        scale_max = int(scale_str.split("/")[1]) if "/" in scale_str else 5
-                        
-                        # Count scores
-                        score_counts = q_data["Score"].value_counts().sort_index()
-                        
-                        row = {
-                            "Question": question,
-                            "Dimension": q_dimension,
-                            "Total Responses": len(q_data)
-                        }
-                        
-                        # Add count for each score
-                        for score in range(1, int(scale_max) + 1):
-                            row[f"Score {score}"] = int(score_counts.get(score, 0))
-                        
-                        score_dist.append(row)
-                    
-                    if score_dist:
-                        dist_df = pd.DataFrame(score_dist)
-                        st.dataframe(
-                            dist_df,
-                            use_container_width=True,
-                            hide_index=True,
-                            height=300,
-                        )
-                else:
-                    st.info("No Likert responses found in the selected date range.")
-
-    # ─────────────────────────────────
-    # TAB 2 — SERVQUAL SENTIMENT (OPEN-ENDED)
-    # ─────────────────────────────────
-    with tab2:
         with st.expander("💬 Sentiment Analysis", expanded=True):
             st.markdown("""
             <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
@@ -1988,6 +1522,7 @@ def render_dashboard():
 
                 if avg_net > 20: overall_tone, overall_color = "Predominantly positive", "#4a7c59"
                 elif avg_net > 0: overall_tone, overall_color = "Moderately positive", "#6ba587"
+                elif avg_net == 0: overall_tone, overall_color = "Neutral (Balanced)", "#8b9dc3"
                 elif avg_net > -20: overall_tone, overall_color = "Mixed with negative lean", "#8b9dc3"
                 else: overall_tone, overall_color = "Predominantly negative", "#b03a2e"
 
@@ -1995,6 +1530,7 @@ def render_dashboard():
                 tone_descriptions = {
                     "Predominantly positive": "Respondents are expressing strong satisfaction with the service. Most feedback emphasizes improvements and positive experiences.",
                     "Moderately positive": "Respondents generally have positive experiences, though there are some areas where satisfaction could be improved.",
+                    "Neutral (Balanced)": "Sentiment is perfectly balanced. Respondents are providing factual observations without strong emotions, with equal numbers of positive and negative comments.",
                     "Mixed with negative lean": "Sentiment is divided with significant concerns. Respondents highlight problems but also recognize some positive aspects.",
                     "Predominantly negative": "Respondents express significant dissatisfaction. Negative feedback dominates, indicating urgent areas requiring attention.",
                 }
@@ -2471,7 +2007,10 @@ def render_dashboard():
                                     # If not found there, try looking up from form schema by ID or text
                                     if not q_dimension:
                                         if q_id:
-                                            q_dimension = form_schema_full.get("by_id", {}).get(q_id, {}).get("dimension")
+                                            # Try both string and non-string formats
+                                            q_dimension = form_schema_full.get("by_id", {}).get(str(q_id), {}).get("dimension")
+                                            if not q_dimension:
+                                                q_dimension = form_schema_full.get("by_id", {}).get(q_id, {}).get("dimension")
                                         if not q_dimension:
                                             q_dimension = form_schema.get(question, {}).get("dimension")
                                     dimension_display = q_dimension if q_dimension else "Untagged"
@@ -2559,6 +2098,9 @@ def render_dashboard():
                         sentiment_summary = f"<strong style=\"color:#4a7c59;\">✅ Strongly Positive Sentiment:</strong> With {pos_rate:.1f}% positive responses, respondents are generally satisfied with public transportation services. This indicates good operational performance and customer satisfaction. Focus on maintaining these positive aspects while addressing the {neg_rate:.1f}% negative feedback."
                     elif pos_rate > 40:
                         sentiment_summary = f"<strong style=\"color:#6ba587;\">🙂 Moderately Positive Sentiment:</strong> With {pos_rate:.1f}% positive and {neg_rate:.1f}% negative responses, there's a mixed but overall favorable sentiment. Respondents appreciate certain aspects but have concerns about others. Investigate the {neg_rate:.1f}% negative comments to identify specific pain points for improvement."
+                    elif neu_rate >= 80 or (pos_rate < 5 and neg_rate < 5):
+                        # Pure neutral: most responses are neutral with minimal positive/negative
+                        sentiment_summary = f"<strong style=\"color:#8b9dc3;\">😐 Neutral Sentiment:</strong> With {neu_rate:.1f}% neutral responses, respondents are providing factual observations without strong emotions. They describe experiences matter-of-factly without expressing significant satisfaction or dissatisfaction. This suggests respondents view the service as adequate but unremarkable."
                     elif pos_rate > neg_rate:
                         sentiment_summary = f"<strong style=\"color:#8b9dc3;\">😐 Balanced Sentiment:</strong> Responses are divided between positive ({pos_rate:.1f}%), neutral ({neu_rate:.1f}%), and negative ({neg_rate:.1f}%). This suggests varied experiences across respondents. Review the detailed feedback log to understand specific issues and successes."
                     else:
@@ -2603,12 +2145,15 @@ def render_dashboard():
                 q_sentiment_data = []
                 
                 if "question_sentiments" in df_sent.columns:
+                    # Build ID-to-prompt mapping from form schema for lookups
+                    id_to_prompt = form_schema_full.get("by_id", {})
+                    
                     for _, row in df_sent.iterrows():
                         question_sentiments = row.get("question_sentiments", {})
                         
                         if isinstance(question_sentiments, dict):
-                            # question_sentiments is keyed by question text (prompt), not ID
-                            for question_text, q_data in question_sentiments.items():
+                            # question_sentiments is keyed by question ID, so we need to look up the prompt
+                            for question_id, q_data in question_sentiments.items():
                                 if isinstance(q_data, dict):
                                     if q_data.get("enable_sentiment") is False:
                                         continue
@@ -2617,8 +2162,14 @@ def render_dashboard():
                                     if sentiment:
                                         sentiment_upper = str(sentiment).upper().strip()
                                         if sentiment_upper != "PENDING" and sentiment_upper in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+                                            # Look up question prompt by ID, trying both formats
+                                            q_info = id_to_prompt.get(str(question_id), {})
+                                            if not q_info:
+                                                q_info = id_to_prompt.get(question_id, {})
+                                            question_prompt = q_info.get("prompt", str(question_id))
+                                            
                                             q_sentiment_data.append({
-                                                "Question": question_text,
+                                                "Question": question_prompt,
                                                 "Sentiment": sentiment_upper
                                             })
                 
@@ -2674,6 +2225,475 @@ def render_dashboard():
                     st.info("No per-question sentiment analysis available. Enable sentiment analysis for questions in Form Builder.")
 
     # ─────────────────────────────────
+    # TAB 2 — Numerical
+    # ─────────────────────────────────
+
+    with tab2:
+        # Overall SERVQUAL KPI Card
+        col_servqual = st.columns(1)[0]
+        servqual_display = (
+            f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>"
+            if has_servqual_data else "N/A"
+        )
+        servqual_subtext = "Avg of 5 SERVQUAL dimensions" if has_servqual_data else "No SERVQUAL tags yet"
+        col_servqual.markdown(f"""<div class="kpi-card">
+          <div class="kpi-title">Overall SERVQUAL</div>
+          <div class="kpi-value gold">{servqual_display}</div>
+          <div class="kpi-sub">{servqual_subtext}</div>
+        </div>""", unsafe_allow_html=True)
+        
+        st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
+        
+        with st.expander("🕸 Servqual Radar", expanded=True):
+            st.markdown("""
+            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+            <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+                SERVQUAL Guide (Likert Scale Only)
+            </div>
+            <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+                This radar summarizes <strong>land public transportation</strong> feedback from your survey—broadly:
+                <strong>service experience</strong>, <strong>vehicles and facilities</strong>, <strong>people involved</strong> (e.g. crew and passengers),
+                and how riders see the <strong>current situation</strong> (e.g. delays, travel conditions, or how <strong>cost and operating pressures</strong> affect the trip).
+                Your exact topics depend on how you wrote your Likert items; the radar only groups them under SERVQUAL.<br>
+                Scores come only from <strong>Likert averages</strong> tagged to SERVQUAL dimensions
+                (Tangibles, Reliability, Responsiveness, Assurance, Empathy).<br>
+                <strong>Scale conversion:</strong> any Likert scale with values above <strong>5</strong>
+                is normalized to a <strong>1 to 5</strong> scale for consistent SERVQUAL computation.<br>
+                <strong>How to read:</strong> each spoke is one dimension on a <strong>1 to 5</strong> scale;
+                farther from the center means stronger perceived quality on that dimension.<br>
+                <strong>How to use:</strong> use this chart to see what dimension-level data you already have from discussions
+                about land public transportation in your responses.
+            </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if not has_servqual_data and not has_general_ratings:
+                st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
+                <p>No SERVQUAL dimension scores or General Ratings yet.<br><br>
+                In <strong>Form Builder</strong>, add Likert questions to your form.
+                Assign them to SERVQUAL dimensions (Tangibles, Reliability, Responsiveness, Assurance, Empathy)
+                for dimension-specific tracking, or leave them untagged for <em>General Ratings</em>.</p>
+                </div>""", unsafe_allow_html=True)
+            else:
+                # Recalculate radar data using FILTERED data
+                normalized_df_filtered = df[list(present_servqual_dims.values())].copy()
+                
+                observed_max_filtered = normalized_df_filtered.max().max()
+                if pd.isna(observed_max_filtered) or observed_max_filtered <= 0:
+                    scale_max_filtered = 5
+                else:
+                    scale_max_filtered = float(observed_max_filtered) if observed_max_filtered > 5 else 5
+                
+                for col in present_servqual_dims.values():
+                    normalized_df_filtered[col] = normalized_df_filtered[col].apply(lambda x: normalize_to_5(x, scale_max_filtered))
+                
+                # Build radar data from SERVQUAL dimensions and/or General Ratings
+                dim_means = {}
+                
+                # Add SERVQUAL dimensions if present
+                if has_servqual_data:
+                    dim_means.update({
+                        k: float(normalized_df_filtered[v].mean())
+                        for k, v in present_servqual_dims.items()
+                        if not pd.isna(normalized_df_filtered[v].mean())
+                    })
+                
+                # Add General Ratings if present
+                if has_general_ratings:
+                    general_ratings_filtered = []
+                    for _, row in df.iterrows():
+                        if GENERAL_RATINGS_COL in row and pd.notna(row[GENERAL_RATINGS_COL]):
+                            general_ratings_filtered.append(row[GENERAL_RATINGS_COL])
+                    if general_ratings_filtered:
+                        gen_ratings_avg = sum(general_ratings_filtered) / len(general_ratings_filtered)
+                        dim_means["General Ratings"] = gen_ratings_avg
+                
+                labels = list(dim_means.keys())
+                values = list(dim_means.values())
+
+                if not values or len(values) == 0:
+                    st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
+                    <p>No dimension scores match the current filters.<br>
+                    Try adjusting your filters to see the SERVQUAL radar.</p>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    col_r1, col_r2 = st.columns([3, 2])
+                    
+                    with col_r1:
+                        st.markdown('<div class="section-head">SERVQUAL Dimension Averages</div>', unsafe_allow_html=True)
+                        v_closed = values + [values[0]]
+                        l_closed = labels + [labels[0]]
+
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatterpolar(
+                            r=v_closed,
+                            theta=l_closed,
+                            fill="toself",
+                            fillcolor="rgba(26,50,99,0.25)",
+                            line=dict(color="rgb(26,50,99)", width=3),
+                            marker=dict(size=8, color="#ffc570"),
+                            name="Likert (Tagged)",
+                            showlegend=True,
+                        ))
+                        
+                        # No longer need separate untagged overlay since it's now in dim_means
+                        
+                        fig.update_layout(
+                            polar=dict(
+                                bgcolor="rgba(0,0,0,0)",
+                                radialaxis=dict(
+                                    visible=True,
+                                    range=[0, 5],
+                                    tickvals=[1, 2, 3, 4, 5],
+                                    tickfont=dict(size=10, color="rgb(120,148,172)"),
+                                gridcolor="rgba(84,119,146,0.2)",
+                                linecolor="rgba(84,119,146,0.2)",
+                            ),
+                            angularaxis=dict(
+                                tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
+                                gridcolor="rgba(84,119,146,0.15)",
+                            ),
+                        ),
+                            showlegend=True,
+                            legend=dict(x=1.05, y=1, font=dict(size=10)),
+                            margin=dict(t=40, b=40, l=60, r=100),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            height=360,
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    with col_r2:
+                        st.markdown('<div class="section-head">Dimension Scores</div>', unsafe_allow_html=True)
+                        for dim, mean_val in dim_means.items():
+                            # Rename "General Ratings" to "Untagged Ratings" for clarity
+                            display_dim = "Untagged Ratings" if dim == "General Ratings" else dim
+                            pct   = (mean_val / 5) * 100
+                            color = "#4a7c59" if mean_val >= 4 else "#8b9dc3" if mean_val >= 3 else "#b03a2e"
+                            st.markdown(f"""
+                            <div style="margin-bottom:.7rem;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:.2rem;">
+                                <span style="font-size:.78rem;font-weight:700;color:rgb(26,50,99);">{display_dim}</span>
+                                <span style="font-size:.78rem;font-weight:700;color:{color};">{mean_val:.2f}/5</span>
+                            </div>
+                            <div style="background:rgba(84,119,146,0.12);border-radius:999px;height:7px;overflow:hidden;">
+                                <div style="width:{pct:.1f}%;height:100%;border-radius:999px;background:{color};transition:width .4s;"></div>
+                            </div>
+                            </div>""", unsafe_allow_html=True)
+                    
+                    # ── CONCLUSION FOR SERVQUAL RADAR (LIKERT SCORES) ──
+                    st.markdown("---")
+                    st.markdown('<div class="section-head">📋 Analysis Conclusion</div>', unsafe_allow_html=True)
+
+                    def get_likert_tier(score):
+                        if score >= 4:
+                            return "strong"
+                        elif score >= 3:
+                            return "moderate"
+                        else:
+                            return "weak"
+
+                    tier_config = {
+                        "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
+                        "moderate": ("🔶", "Needs monitoring", "#8b6914", "rgba(255,197,112,0.10)", "rgba(255,197,112,0.35)"),
+                        "weak":     ("🚨", "Needs attention (Negative)",  "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
+                    }
+
+                    all_scores = list(dim_means.values())
+                    # Note: General Ratings is already included in dim_means, no need to append again
+
+                    avg_satisfaction = sum(all_scores) / len(all_scores) if all_scores else 0
+
+                    if avg_satisfaction >= 4:
+                        overall_tier = "strong"
+                        overall_label = "Strong overall satisfaction"
+                    elif avg_satisfaction >= 3:
+                        overall_tier = "moderate"
+                        overall_label = "Moderate overall satisfaction"
+                    else:
+                        overall_tier = "weak"
+                        overall_label = "Low overall satisfaction"
+
+                    overall_emoji, _, overall_color, overall_bg, _ = tier_config[overall_tier]
+
+                    sorted_dims = sorted(dim_means.items(), key=lambda x: x[1])
+                    weakest_dims = [(d, s) for d, s in sorted_dims if s < 3]
+                    watch_dims   = [(d, s) for d, s in sorted_dims if 3 <= s < 4]
+                    strong_dims  = [(d, s) for d, s in sorted_dims if s >= 4]
+
+                    overall_desc_parts = []
+                    if strong_dims:
+                        overall_desc_parts.append(
+                            f"<strong>{', '.join(d for d,_ in strong_dims)}</strong> "
+                            f"{'are' if len(strong_dims) > 1 else 'is'} performing well."
+                        )
+                    if watch_dims:
+                        overall_desc_parts.append(
+                            f"<strong>{', '.join(d for d,_ in watch_dims)}</strong> "
+                            f"{'show' if len(watch_dims) > 1 else 'shows'} room for improvement."
+                        )
+                    if weakest_dims:
+                        overall_desc_parts.append(
+                            f"<strong>{', '.join(d for d,_ in weakest_dims)}</strong> "
+                            f"{'require' if len(weakest_dims) > 1 else 'requires'} urgent attention."
+                        )
+                    overall_desc = " ".join(overall_desc_parts) if overall_desc_parts else "Collect more responses to generate a detailed signal."
+
+                    st.markdown(f"""
+                    <div style="border:1px solid rgba(26,50,99,0.12);border-radius:12px;overflow:hidden;margin-bottom:1.2rem;">
+                    <div style="background:{overall_bg};padding:1.1rem 1.3rem;border-bottom:1px solid rgba(26,50,99,0.08);">
+                        <div style="font-size:0.65rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">Overall SERVQUAL Signal</div>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <div style="font-size:2rem;font-weight:700;color:{overall_color};line-height:1;">{avg_satisfaction:.2f}<span style="font-size:1rem;color:rgb(120,148,172);font-weight:400;">/5</span></div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:{overall_color};">{overall_emoji} {overall_label}</div>
+                            <div style="font-size:0.78rem;color:rgb(80,110,140);margin-top:2px;">{overall_desc}</div>
+                        </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:0;border-bottom:1px solid rgba(26,50,99,0.08);">
+                        <div style="flex:1;padding:.5rem .9rem;background:rgba(176,58,46,0.05);border-right:1px solid rgba(26,50,99,0.06);">
+                        <div style="font-size:.6rem;font-weight:700;color:#b03a2e;text-transform:uppercase;letter-spacing:.08em;">Below 3.0</div>
+                        <div style="font-size:.7rem;color:rgb(120,148,172);">Needs attention</div>
+                        </div>
+                        <div style="flex:1;padding:.5rem .9rem;background:rgba(255,197,112,0.07);border-right:1px solid rgba(26,50,99,0.06);">
+                        <div style="font-size:.6rem;font-weight:700;color:#8b6914;text-transform:uppercase;letter-spacing:.08em;">3.0 – 3.99</div>
+                        <div style="font-size:.7rem;color:rgb(120,148,172);">Monitor</div>
+                        </div>
+                        <div style="flex:1;padding:.5rem .9rem;background:rgba(74,124,89,0.05);">
+                        <div style="font-size:.6rem;font-weight:700;color:#4a7c59;text-transform:uppercase;letter-spacing:.08em;">4.0 – 5.0</div>
+                        <div style="font-size:.7rem;color:rgb(120,148,172);">Performing well</div>
+                        </div>
+                    </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.markdown('<div style="font-size:0.72rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:0.8rem;">Dimension-by-dimension breakdown</div>', unsafe_allow_html=True)
+
+                    likert_cols = st.columns(len(dim_means))
+                    for col_idx, (dim, score) in enumerate(dim_means.items()):
+                        tier = get_likert_tier(score)
+                        emoji_t, label_t, color_t, bg_t, border_color_t = tier_config[tier]
+                        
+                        # USE THE LIKERT DICTIONARY HERE
+                        desc_tuple = likert_dimension_descriptions.get(dim)
+                        desc = desc_tuple[0] if desc_tuple else ""
+                        insight_map = desc_tuple[1] if desc_tuple else {}
+                        insight = insight_map.get(tier, "")
+                        action = insight_map.get(f"action_{tier}", "")
+
+                        pct = (score / 5) * 100
+
+                        with likert_cols[col_idx]:
+                            st.markdown(f"""
+                            <div style="border:1px solid rgba(26,50,99,0.10);border-top:3px solid {color_t};border-radius:10px;padding:0.9rem 1rem;background:{bg_t};height:100%;">
+                            <div style="font-weight:700;color:rgb(26,50,99);font-size:0.88rem;margin-bottom:0.2rem;">{dim}</div>
+                            <div style="font-size:0.63rem;color:rgb(120,148,172);margin-bottom:0.6rem;line-height:1.4;">{desc}</div>
+                            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:0.4rem;">
+                            <span style="font-size:1.55rem;font-weight:700;color:{color_t};line-height:1;">{score:.2f}</span>
+                            <span style="font-size:0.75rem;color:rgb(120,148,172);">/5</span>
+                        </div>
+                        <div style="background:rgba(84,119,146,0.12);border-radius:999px;height:5px;overflow:hidden;margin-bottom:0.55rem;">
+                            <div style="width:{pct:.1f}%;height:100%;border-radius:999px;background:{color_t};"></div>
+                        </div>
+                        <div style="display:inline-flex;align-items:center;gap:4px;border:1px solid {border_color_t};border-radius:999px;padding:.15rem .6rem;font-size:.62rem;font-weight:700;color:{color_t};margin-bottom:.65rem;">{emoji_t} {label_t}</div>
+                        <div style="font-size:.72rem;color:rgb(60,90,120);line-height:1.55;margin-bottom:.5rem;">{insight}</div>
+                        <div style="border-left:3px solid {border_color_t};padding-left:.6rem;font-size:.7rem;color:rgb(80,110,140);line-height:1.5;font-style:italic;">{action}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    if weakest_dims or watch_dims or strong_dims:
+                        st.markdown('<div style="margin-top:1.2rem;"></div>', unsafe_allow_html=True)
+                        st.markdown('<div style="font-size:0.72rem;font-weight:700;color:rgb(120,148,172);text-transform:uppercase;letter-spacing:.08em;margin-bottom:0.7rem;">Action priority</div>', unsafe_allow_html=True)
+
+                        triage_html = '<div style="display:flex;flex-direction:column;gap:8px;">'
+
+                        if weakest_dims:
+                            names = ", ".join(f"{d} ({s:.2f})" for d, s in weakest_dims)
+                            triage_html += f"""
+                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(176,58,46,0.06);border:1px solid rgba(176,58,46,0.2);border-radius:8px;">
+                            <span style="font-size:.65rem;font-weight:700;background:rgba(176,58,46,0.12);color:#b03a2e;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🚨 Urgent</span>
+                            <div>
+                                <div style="font-size:.78rem;font-weight:700;color:#b03a2e;margin-bottom:2px;">{names}</div>
+                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps. Check the <strong>Quantitative Tab (Likert Response Log)</strong> to pinpoint exactly which Likert metric is pulling the dimension down before planning remediation.</div>
+                            </div>
+                            </div>"""
+
+                        if watch_dims:
+                            names = ", ".join(f"{d} ({s:.2f})" for d, s in watch_dims)
+                            triage_html += f"""
+                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(255,197,112,0.08);border:1px solid rgba(255,197,112,0.3);border-radius:8px;">
+                            <span style="font-size:.65rem;font-weight:700;background:rgba(255,197,112,0.2);color:#8b6914;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🔶 Monitor</span>
+                            <div>
+                                <div style="font-size:.78rem;font-weight:700;color:#8b6914;margin-bottom:2px;">{names}</div>
+                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Borderline scores (3.0–3.99) signal acceptable but inconsistent service. These dimensions are vulnerable to operational disruptions. Targeted improvements in scheduling, communication, or facilities could push these above 4.0.</div>
+                            </div>
+                            </div>"""
+
+                        if strong_dims:
+                            names = ", ".join(f"{d} ({s:.2f})" for d, s in strong_dims)
+                            triage_html += f"""
+                            <div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(74,124,89,0.06);border:1px solid rgba(74,124,89,0.2);border-radius:8px;">
+                            <span style="font-size:.65rem;font-weight:700;background:rgba(74,124,89,0.12);color:#4a7c59;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">✅ Sustain</span>
+                            <div>
+                                <div style="font-size:.78rem;font-weight:700;color:#4a7c59;margin-bottom:2px;">{names}</div>
+                                <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores at 4.0 or above indicate genuine commuter satisfaction. Document what is driving these high scores and replicate those practices across weaker dimensions and underperforming routes.</div>
+                            </div>
+                            </div>"""
+
+                        triage_html += '</div>'
+                        st.markdown(triage_html, unsafe_allow_html=True)
+            
+        # ── Quantitative Analysis Data ──
+        st.markdown("""<div style="height: 2rem;"></div>""", unsafe_allow_html=True)
+        with st.expander("📊 Quantitative Data", expanded=True):
+            st.markdown("""
+            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
+                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+              <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">
+                Quantitative Guide
+              </div>
+              <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
+                This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation—service quality, vehicles, experience, or anything you asked on a scale.<br><br>
+                <strong>Score by Selected Context:</strong> average SERVQUAL (and general) scores grouped by a field from the respondent profile (e.g. how often they ride, mode type, etc.).<br>
+                <strong>How to use:</strong> pick a grouping that fits your research question, then see which segments score higher or lower on each dimension.<br><br>
+                <strong>How to use:</strong> name strengths and problem areas in your analysis and tie them to the SERVQUAL framework.<br><br>
+                <strong>Likert Response Log:</strong> each numeric answer with question text and time.<br>
+                <strong>How to use:</strong> audit the data, spot outliers, and support tables or appendices with raw-scale answers.
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if not has_any_rating_data:
+                st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
+                  <p>No rating scores available yet.<br>
+                  Assign SERVQUAL dimensions or leave questions untagged
+                  (they appear as General Ratings) in Form Builder.</p>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
+                likert_rows = []
+                for _, row in df.iterrows():
+                    ans_map = row.get("answers", {})
+                    submitted = row.get("created_at", None)
+                    if not isinstance(ans_map, dict):
+                        continue
+                    for question, answer in ans_map.items():
+                        score = pd.to_numeric(answer, errors="coerce")
+                        if pd.Series(score).isna().all():
+                            continue
+                        question_text = str(question)
+                        base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
+                        schema_scale = question_scale_map.get(question_text)
+                        if schema_scale is None:
+                            schema_scale = question_scale_map.get(base_question)
+                        if schema_scale is not None and schema_scale > 1:
+                            q_scale_max = float(schema_scale)
+                        else:
+                            q_scores = pd.to_numeric(
+                                df["answers"].apply(
+                                    lambda a: a.get(question) if isinstance(a, dict) else None
+                                ),
+                                errors="coerce",
+                            )
+                            q_max = q_scores.max()
+                            q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
+                        score_norm = normalize_to_5(float(score), q_scale_max)
+                        scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
+                        
+                        # Get SERVQUAL dimension for this question
+                        q_dimension = form_schema.get(question_text, {}).get("dimension")
+                        if q_dimension is None:
+                            q_dimension = form_schema.get(base_question, {}).get("dimension")
+                        dimension_display = q_dimension if q_dimension else "Untagged"
+                        
+                        likert_rows.append({
+                            "Question": str(question),
+                            "Dimension": dimension_display,
+                            "Score": int(score) if float(score).is_integer() else float(score),
+                            "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
+                            "ScoreNormalized": round(float(score_norm), 2),
+                            "Submitted": submitted,
+                        })
+
+                if likert_rows:
+                    likert_df = pd.DataFrame(likert_rows)
+                    likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
+                    likert_df["Submitted Date"] = likert_df["Submitted"].dt.date
+
+                    q_avg = (
+                        likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
+                        .mean()
+                        .rename(columns={"ScoreNormalized": "Average Score"})
+                    )
+                    q_avg["Responses"] = likert_df.groupby("Question").size().values
+                    q_avg = q_avg.sort_values("Average Score", ascending=False)
+                    top_n = q_avg.head(5)
+                    bottom_n = q_avg.tail(5)
+                    top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
+                    top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
+
+                    tb_chart = (
+                        alt.Chart(top_bottom)
+                        .mark_bar(cornerRadiusEnd=4)
+                        .encode(
+                            y=alt.Y("Question:N", sort="-x", title="Question"),
+                            x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
+                            color=alt.Color(
+                                "Average Score:Q",
+                                scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
+                                legend=alt.Legend(title="Score (/5)"),
+                            ),
+                            tooltip=[
+                                alt.Tooltip("Question:N"),
+                                alt.Tooltip("Average Score:Q", format=".2f"),
+                                alt.Tooltip("Responses:Q"),
+                                alt.Tooltip("Category:N", title="Group"),
+                            ],
+                        )
+                        .properties(height=280)
+                    )
+                    st.altair_chart(tb_chart, use_container_width=True)
+                    
+                    st.markdown('<div class="section-head">Score Distribution</div>', unsafe_allow_html=True)
+                    st.caption("Breakdown of how many respondents gave each score for each question.")
+                    
+                    # Create score distribution table
+                    score_dist = []
+                    for question in likert_df["Question"].unique():
+                        q_data = likert_df[likert_df["Question"] == question]
+                        q_dimension = q_data["Dimension"].iloc[0] if len(q_data) > 0 else "Untagged"
+                        
+                        # Get the scale max for this question
+                        scale_str = q_data["Score (Selected Scale)"].iloc[0] if len(q_data) > 0 else "0/5"
+                        scale_max = int(scale_str.split("/")[1]) if "/" in scale_str else 5
+                        
+                        # Count scores
+                        score_counts = q_data["Score"].value_counts().sort_index()
+                        
+                        row = {
+                            "Question": question,
+                            "Dimension": q_dimension,
+                            "Total Responses": len(q_data)
+                        }
+                        
+                        # Add count for each score
+                        for score in range(1, int(scale_max) + 1):
+                            row[f"Score {score}"] = int(score_counts.get(score, 0))
+                        
+                        score_dist.append(row)
+                    
+                    if score_dist:
+                        dist_df = pd.DataFrame(score_dist)
+                        st.dataframe(
+                            dist_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            height=300,
+                        )
+                else:
+                    st.info("No Likert responses found in the selected date range.")
+
+    # ─────────────────────────────────
     # TAB 3 — DATABASE
     # ─────────────────────────────────
     with tab3:
@@ -2691,16 +2711,79 @@ def render_dashboard():
             </div>
             """, unsafe_allow_html=True)
 
-            if "demo_answers" not in df.columns:
-                st.markdown("""<div class="empty-tab"><div class="icon">👥</div>
-                <p>No demographic data available.<br>
-                Turn on <strong>respondent profile</strong> and/or mark your own questions as <strong>demographic</strong> in Form Builder, then collect responses.</p>
-                </div>""", unsafe_allow_html=True)
+            if "demo_answers" not in df.columns or df["demo_answers"].isna().all():
+                # No separate demo_answers field - extract demographics from answers field instead
+                
+                # First, try to identify demographic questions from form_questions
+                demographic_prompts = set()
+                for q in all_questions:
+                    if q.get("is_demographic"):
+                        demographic_prompts.add(q.get("prompt"))
+                
+                # If form_questions is empty or has no demographic markers, use standard demographic patterns
+                if not demographic_prompts and df.shape[0] > 0:
+                    # Fallback: extract common demographic fields from responses
+                    try:
+                        first_row_answers = df.iloc[0]["answers"]
+                    except:
+                        first_row_answers = None
+                    
+                    # Handle both dict and JSON string formats
+                    if isinstance(first_row_answers, str):
+                        try:
+                            first_row_answers = json.loads(first_row_answers)
+                        except:
+                            first_row_answers = {}
+                    elif not isinstance(first_row_answers, dict):
+                        first_row_answers = {}
+                    
+                    if first_row_answers:
+                        # Look for standard demographic question names
+                        standard_demo_keywords = [
+                            "Age", "Gender", "Occupational", "Allowance", "Salary",
+                            "transport mode", "Commuting", "Frequency"
+                        ]
+                        for ans_key in first_row_answers.keys():
+                            for keyword in standard_demo_keywords:
+                                if keyword.lower() in ans_key.lower():
+                                    demographic_prompts.add(ans_key)
+                                    break
+                
+                # Extract demographics from answers using identified prompts
+                demo_rows = []
+                for idx, row in df.iterrows():
+                    try:
+                        ans_map = row["answers"] if "answers" in row else None
+                    except:
+                        ans_map = None
+                    
+                    # Handle both dict and JSON string formats
+                    if isinstance(ans_map, str):
+                        try:
+                            ans_map = json.loads(ans_map)
+                        except:
+                            ans_map = {}
+                    elif not isinstance(ans_map, dict):
+                        ans_map = {}
+                    
+                    if ans_map:
+                        demo_row = {}
+                        for prompt in demographic_prompts:
+                            if prompt in ans_map:
+                                demo_row[prompt] = ans_map[prompt]
+                        if demo_row:
+                            demo_rows.append(demo_row)
+                
+                if demo_rows:
+                    demo_df = pd.DataFrame(demo_rows)
+                else:
+                    demo_df = pd.DataFrame()
             else:
                 demo_df = pd.json_normalize(df["demo_answers"].dropna().tolist())
                 if demo_df.empty:
                     st.markdown("""<div class="empty-tab"><div class="icon">👥</div>
-                    <p>No demographic responses recorded yet.</p>
+                    <p>No demographic data available.<br>
+                    Mark questions as <strong>demographic</strong> in Form Builder and collect responses to see charts.</p>
                     </div>""", unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="section-head">📊 Choose Visualization Type</div>', unsafe_allow_html=True)
@@ -2761,19 +2844,22 @@ def render_dashboard():
                                         continue
                                     q, label = spec[0], spec[1]
                                     with col_w:
-                                        vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
-                                        vc.columns = [label, "Count"]
+                                        series_data = _explode_demo_series(demo_df[q])
+                                        vc = series_data.value_counts().reset_index()
+                                        # Use simple column names for Altair compatibility
+                                        vc.columns = ["Value", "Count"]
+                                        
                                         st.altair_chart(
                                             alt.Chart(vc)
                                             .mark_arc(innerRadius=40)
                                             .encode(
                                                 theta="Count:Q",
                                                 color=alt.Color(
-                                                    f"{label}:N",
+                                                    "Value:N",
                                                     scale=alt.Scale(scheme="blues"),
                                                     legend=alt.Legend(orient="bottom", labelFontSize=10),
                                                 ),
-                                                tooltip=[f"{label}:N", "Count:Q"],
+                                                tooltip=["Value:N", "Count:Q"],
                                             )
                                             .properties(title=label, height=200),
                                             use_container_width=True,
@@ -2785,16 +2871,17 @@ def render_dashboard():
                             
                             for q, label in demo_specs:
                                 vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
-                                vc.columns = [label, "Count"]
+                                # Use simple column names for Altair compatibility
+                                vc.columns = ["Value", "Count"]
                                 vc = vc.sort_values("Count", ascending=True) 
                                 
                                 bar_chart = (
                                     alt.Chart(vc)
                                     .mark_bar(color="#1a3263")
                                     .encode(
-                                        y=alt.Y(f"{label}:N", sort="-x", title=None),
+                                        y=alt.Y("Value:N", sort="-x", title=None),
                                         x=alt.X("Count:Q", title="Number of Responses"),
-                                        tooltip=[f"{label}:N", "Count:Q"],
+                                        tooltip=["Value:N", "Count:Q"],
                                     )
                                     .properties(
                                         title=label,
@@ -2819,22 +2906,22 @@ def render_dashboard():
                                     for idx, prim_val in enumerate(primary_series):
                                         if idx < len(secondary_series):
                                             combined_data.append({
-                                                primary_label: str(prim_val),
-                                                label: str(secondary_series.iloc[idx]),
+                                                "Primary": str(prim_val),
+                                                "Secondary": str(secondary_series.iloc[idx]),
                                             })
                                     
                                     if combined_data:
                                         combined_df = pd.DataFrame(combined_data)
-                                        grouped = combined_df.groupby([primary_label, label]).size().reset_index(name="Count")
+                                        grouped = combined_df.groupby(["Primary", "Secondary"]).size().reset_index(name="Count")
                                         
                                         stacked_chart = (
                                             alt.Chart(grouped)
                                             .mark_bar()
                                             .encode(
-                                                x=alt.X(f"{primary_label}:N", title=primary_label),
+                                                x=alt.X("Primary:N", title=primary_label),
                                                 y=alt.Y("Count:Q", title="Count"),
-                                                color=alt.Color(f"{label}:N", title=label, scale=alt.Scale(scheme="blues")),
-                                                tooltip=[f"{primary_label}:N", label, "Count:Q"],
+                                                color=alt.Color("Secondary:N", title=label, scale=alt.Scale(scheme="blues")),
+                                                tooltip=["Primary:N", "Secondary:N", "Count:Q"],
                                             )
                                             .properties(title=f"{label} by {primary_label}", height=250)
                                         )
@@ -2848,7 +2935,7 @@ def render_dashboard():
                             
                             for q, label in demo_specs:
                                 vc = _explode_demo_series(demo_df[q]).value_counts().reset_index()
-                                vc.columns = [label, "Count"]
+                                vc.columns = ["Value", "Count"]
                                 vc["Percentage"] = (vc["Count"] / vc["Count"].sum() * 100).round(1)
                                 vc = vc.sort_values("Count", ascending=False)
                                 
@@ -2901,6 +2988,7 @@ def render_dashboard():
                         form_meta_data = {}
                     
                     show_demo_block = form_meta_data.get("include_demographics", False) if form_meta_data else False
+                    show_servqual_block = form_meta_data.get("include_standard_servqual_questions", True) if form_meta_data else True
                     
                     STANDARD_DEMO_QUESTIONS = [
                         {"prompt": "1. Age / Edad", "q_type": "Multiple Choice", "options": ["Below / Mababa sa 18", "18-25", "26-35", "36-45", "46-55", "Above / Mataas sa 55"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
@@ -2911,11 +2999,33 @@ def render_dashboard():
                         {"prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan", "q_type": "Multiple Choice", "options": ["Traditional Jeepney (Tradisyunal na Jeepney)", "Modern Jeepney (Modernong Jeepney)", "Bus", "Taxi (Taksi)", "UV Express", "Ride-hailing services (e.g., Angkas, Grab, Move It)", "LRT-1", "LRT-2", "MRT-3", "Others"], "is_required": True, "servqual_dimension": "Commuter Profile", "is_demographic": True},
                     ]
                     
-                    if show_demo_block:
-                        existing_prompts = {q.get("prompt") for q in all_questions}
-                        for std_q in STANDARD_DEMO_QUESTIONS:
-                            if std_q.get("prompt") not in existing_prompts:
-                                all_questions.append(std_q)
+                    STANDARD_SERVQUAL_QUESTIONS = [
+                        {"prompt": "DIMENSION 1: TANGIBLES (Physical appearance and comfort)\n\nQuestion 1: How would you describe the physical condition and cleanliness of the vehicle or train you rode, as well as the seating comfort? (Paano mo ilalarawan ang pisikal na kondisyon at kalinisan ng sasakyan o tren na sinakyan mo, pati na rin ang komportableng pag-upo?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Tangibles", "is_locked": True},
+                        {"prompt": "Question 2: What can you say about the air ventilation and temperature (coldness or heat) inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin at temperatura (lamig o init) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Tangibles", "is_locked": True},
+                        {"prompt": "DIMENSION 2: RELIABILITY (Dependability and smooth service)\n\nQuestion 3: What is your experience regarding the vehicle's reliability, specifically in avoiding mechanical failures mid-journey and adhering to the correct passenger capacity? (Ano ang karanasan mo pagdating sa pag-iwas ng sasakyan sa pagtirik o pagkasira sa gitna ng byahe, pati na rin sa pagsunod sa tamang bilang ng pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Reliability", "is_locked": True},
+                        {"prompt": "Question 4: What are your thoughts on the fare price and whether the driver or conductor gives the exact change? (Ano ang pananaw mo sa presyo ng pamasahe at sa pagbibigay ng tamang sukli ng driver o konduktor?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Reliability", "is_locked": True},
+                        {"prompt": "DIMENSION 3: RESPONSIVENESS (Promptness and communication)\n\nQuestion 5: What can you say about the promptness or speed of the trip in helping you reach your destination on time? (Ano ang masasabi mo sa bilis ng biyahe upang makarating ka sa tamang oras sa iyong destinasyon?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Responsiveness", "is_locked": True},
+                        {"prompt": "Question 6: How would you describe the attentiveness of the driver or conductor when communicating or when you need to alight at the correct drop-off point? (Paano mo ilalarawan ang pagiging alisto ng driver o konduktor kapag kinakausap o kapag kailangan mo nang bumaba sa tamang babaan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Responsiveness", "is_locked": True},
+                        {"prompt": "DIMENSION 4: ASSURANCE (Safety, security, and competence)\n\nQuestion 7: What can you say about the carefulness of the driver in driving and their compliance with traffic laws? (Ano ang masasabi mo sa pagiging maingat ng driver sa pagmamaneho at sa pagsunod niya sa mga batas trapiko?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+                        {"prompt": "Question 8: How would you describe your sense of safety or feeling \"safe from crimes\" (such as theft or harassment) inside the vehicle? (Paano mo ilalarawan ang iyong pakiramdam ng kaligtasan o pagiging ligtas sa mga krimen (tulad ng pagnanakaw o harassment) sa loob ng sasakyan?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Assurance", "is_locked": True},
+                        {"prompt": "DIMENSION 5: EMPATHY (Caring and individualized attention)\n\nQuestion 9: What can you say about the politeness, behavior, and care shown by the driver or conductor towards the passengers? (Ano ang masasabi mo sa pagiging magalang, pag-uugali, at pag-aalaga ng driver o konduktor sa mga pasahero?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+                        {"prompt": "Question 10: How would you evaluate the assistance provided and the designated areas for those in need, such as Senior Citizens, PWDs, and pregnant women? (Paano mo susuriin ang ibinibigay na tulong at mga nakalaang pwesto para sa mga nangangailangan tulad ng Senior Citizens, PWDs, at mga buntis?)", "q_type": "Paragraph", "options": [], "is_required": True, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": "Empathy", "is_locked": True},
+                        {"prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi", "q_type": "Paragraph", "options": [], "is_required": False, "is_demographic": False, "enable_sentiment": True, "servqual_dimension": None, "is_locked": True},
+                    ]
+                    
+                    existing_prompts = {q.get("prompt") for q in all_questions}
+                    
+                    # Always include standard demographics in the table for display (even if toggle is off, show if data exists)
+                    for std_q in STANDARD_DEMO_QUESTIONS:
+                        if std_q.get("prompt") not in existing_prompts:
+                            all_questions.append(std_q)
+                            existing_prompts.add(std_q.get("prompt"))
+                    
+                    # Always include standard SERVQUAL questions in the respondent table for complete visibility
+                    for std_q in STANDARD_SERVQUAL_QUESTIONS:
+                        if std_q.get("prompt") not in existing_prompts:
+                            all_questions.append(std_q)
+                            existing_prompts.add(std_q.get("prompt"))
                     
                     demo_questions = [q for q in all_questions if q.get("is_demographic")]
                     non_demo_questions = [q for q in all_questions if not q.get("is_demographic")]
@@ -3088,8 +3198,11 @@ def render_dashboard():
                             answer_counts = answer_counts.sort_values("Count", ascending=False)
                             
                             type_label = "Multiple Select" if q_type == "Multiple Select" else "Multiple Choice"
+                            max_count = answer_counts["Count"].max()
                             chart = alt.Chart(answer_counts).mark_bar(color="#1a3263").encode(
-                                x=alt.X("Count:Q", title="Number of Responses"),
+                                x=alt.X("Count:Q", title="Number of Responses", 
+                                        axis=alt.Axis(format="d", tickMinStep=1),
+                                        scale=alt.Scale(domain=[0, max(max_count, 1)], nice=False)),
                                 y=alt.Y("Answer:N", sort="-x", title=""),
                                 tooltip=["Answer:N", "Count:Q"],
                             ).properties(

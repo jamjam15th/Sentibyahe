@@ -43,6 +43,8 @@ html, body, p, div, span, a, button, label, input, textarea, select { font-famil
   color: var(--navy) !important; margin: 0 0 .8rem !important;
 }
 
+.stAppToolbar { background: #f0f4f8;}
+
 /* ── LINK CARD ── */
 .link-card {
   background: rgba(26,50,99,0.04); border: 1px solid var(--bdr);

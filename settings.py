@@ -112,6 +112,10 @@ st.markdown("""
     --danger: #b03a2e; 
 }
 
+.stAppToolbar { background: #f7f6f2 !important;}
+            
+.stAppDeployButton { display: none !important; }
+
 *, html, body, p, span, div { font-family: 'Mulish', sans-serif !important; }
 .stApp { background-color: #f0f4f8; }
 

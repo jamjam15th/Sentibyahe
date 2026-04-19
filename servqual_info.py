@@ -31,6 +31,8 @@ st.markdown("""
         z-index: 999999999 !important; /* Highest priority */
     }
 
+    .stAppDeployButton { display: none !important; }
+
     /* 2. COMPLETELY HIDE THE APP ROOT */
     /* visibility: hidden is bulletproof against React hydration overrides */
     .stApp [data-testid="stAppViewBlockContainer"] {

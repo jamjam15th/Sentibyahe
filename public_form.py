@@ -13,12 +13,98 @@ st.set_page_config(
     layout="centered",
 )
 
+loading_screen = st.empty()
+
+# Must go BEFORE Supabase connections and main CSS
+st.markdown("""
+<style>
+    /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+
+    /* 1. KEEP SIDEBAR ON TOP OF LOADER */
+    [data-testid="stSidebar"], 
+    [data-testid="stSidebarCollapsedControl"] {
+        z-index: 999999999 !important; /* Highest priority */
+    }
+
+    /* 2. COMPLETELY HIDE THE APP ROOT */
+    /* visibility: hidden is bulletproof against React hydration overrides */
+    .stApp [data-testid="stAppViewBlockContainer"] {
+        visibility: hidden !important;
+        animation: snapVisible 0.1s forwards 1s !important; /* 2.5 seconds wait */
+    }
+
+    /* 3. OVERLAY THAT COVERS EVERYTHING ELSE */
+    #nuclear-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #f0f4f8; /* Matched to your app background */
+        z-index: 999999998; /* Exactly one layer BELOW the sidebar */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        animation: fadeOutNuclear 0.4s ease-out 1s forwards; /* Matches the 2.5s wait */
+    }
+
+    .spinner {
+        border: 4px solid #ffffff;
+        border-top: 4px solid #1a2e55;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 15px;
+    }
+
+    .loading-text {
+        color: #1a2e55;
+        font-weight: 600;
+        font-family: 'Source Sans Pro', sans-serif;
+        font-size: 1.1rem;
+        letter-spacing: 0.5px;
+    }
+
+    /* 4. KEYFRAMES */
+    @keyframes snapVisible {
+        to { visibility: visible !important; }
+    }
+
+    @keyframes fadeOutNuclear {
+        0% { opacity: 1; visibility: visible; }
+        100% { opacity: 0; visibility: hidden; display: none; }
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<div id="nuclear-loader">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading Form...</div>
+</div>
+""", unsafe_allow_html=True)
+
+
 st.html("""
     <style>
     /* Use a partial match selector to target all keys starting with 'q_card_' */
     div[class*="st-key-q_card_"] {
         background: #fff;
-        border: 1px solid rgba(84,119,146,0.25);
+        border: none;
         border-radius: 12px;
         padding: 1.8rem 2rem;
         margin-bottom: 1rem;
@@ -26,7 +112,6 @@ st.html("""
     </style>
 """)
 
-# ── STYLING ──
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Mulish:wght@300;400;500;600;700&display=swap');
@@ -46,6 +131,28 @@ st.markdown("""
 *, *::before, *::after { box-sizing: border-box; }
 html, body, p, div, span, a, button, label, input, textarea, select {
   font-family: 'Mulish', sans-serif !important;
+}
+
+/* Kept header and stToolbar visible to ensure interface accessibility */
+#MainMenu, footer,
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"] { display: none !important; }
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] { background: var(--off) !important; }
+
+/* FADE-IN ANIMATION TO PREVENT FOUC */
+.block-container {
+  max-width: 760px !important;
+  padding: 3rem 1.5rem 5rem !important;
+  opacity: 0;
+  animation: fadeIn 0.6s ease-in-out forwards;
+  animation-delay: 0.1s;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 #MainMenu, footer, header,
@@ -91,9 +198,9 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     color: var(--navy) !important; font-weight: 600 !important;
 }
 
-.st-e2 {
-    background-color: var(--navy) !important;
-}
+# .st-e2 {
+#     background-color: var(--navy) !important;
+# }
 
 /* ── HORIZONTAL RADIO (Likert Scale Squares) ── */
 [data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] {
@@ -109,7 +216,7 @@ html, body, p, div, span, a, button, label, input, textarea, select {
     height: 52px !important;
     min-width: 0 !important;
     background: #ffffff !important;
-    border: 1px solid #c9d5ea !important;
+    border: none !important;
     border-radius: 6px !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -205,6 +312,18 @@ div.stFormSubmitButton > button {
     border: none !important;
 }
 
+.stElementContainer { width: 100%; }
+
+.st-ai { display: flex; justify-content: space-around; }
+
+
+/* Remove borders from question containers in public form */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"],
+.stContainer { border: none !important; }
+
+.st-emotion-cache-1bcyifm { border: none !important; }
+
+            
 </style>
 """, unsafe_allow_html=True)
 
@@ -238,21 +357,20 @@ st.markdown("""
 conn = st.connection("supabase", type=SupabaseConnection)
 
 # ── CACHED QUERY HELPERS ──
-@st.cache_data
 def _fetch_form_meta(form_id: str):
-    """Cache form metadata by form_id (public access)."""
+    """Fetch form metadata by form_id (public access, always fresh)."""
     meta_res = conn.client.table("form_meta").select("*").eq("form_id", form_id).limit(1).execute()
     return meta_res.data[0] if meta_res.data else None
 
-@st.cache_data
+@st.cache_data(ttl=5)  # Short TTL so changes appear within 5 seconds
 def _fetch_form_meta_by_email(form_id: str, admin_email: str):
-    """Cache form metadata by form_id and admin_email (preview mode)."""
+    """Fetch form metadata by form_id and admin_email (preview mode, short cache)."""
     meta_res = conn.client.table("form_meta").select("*").eq("admin_email", admin_email).eq("form_id", form_id).execute()
     return meta_res.data[0] if meta_res.data else None
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def _fetch_form_questions(form_id: str, admin_email: str):
-    """Cache form questions."""
+    """Fetch form questions (short cache)."""
     q_res = conn.client.table("form_questions").select("*").eq("admin_email", admin_email).eq("form_id", form_id).order("sort_order").execute()
     return q_res.data or []
 
@@ -262,58 +380,50 @@ target_form_id = None
 owner_email = None
 
 if st.session_state.get("logged_in") and st.session_state.get("user_email"):
-    # Preview mode for logged-in users
     owner_email = st.session_state.user_email
-    # Try new multi-form system first, fall back to legacy ID
     from forms import get_legacy_form_id
     target_form_id = st.query_params.get("form_id") or get_legacy_form_id(owner_email)
     is_preview = True
 else:
-    # Public survey access
     query_params = st.query_params
     if "form_id" not in query_params:
         st.error("⚠️ Invalid survey link.")
         st.stop()
     target_form_id = query_params["form_id"]
 
-try:
-    # For public access, we need to get the form and owner_email from form_meta using form_id
-    if not is_preview:
-        # Public access: look up form_id in form_meta to find owner_email
-        # Don't use cache for sample form to ensure fresh data
-        meta_res = conn.client.table("form_meta").select("*").eq("form_id", target_form_id).limit(1).execute()
-        form_meta = meta_res.data[0] if meta_res.data else None
-        if form_meta:
-            owner_email = form_meta.get("admin_email")
+# Use a spinner so the UI doesn't hang blankly during Supabase queries
+with st.spinner("Loading survey data..."):
+    try:
+        if not is_preview:
+            meta_res = conn.client.table("form_meta").select("*").eq("form_id", target_form_id).limit(1).execute()
+            form_meta = meta_res.data[0] if meta_res.data else None
+            if form_meta:
+                owner_email = form_meta.get("admin_email")
+            else:
+                st.error("⚠️ Survey not found.")
+                st.stop()
         else:
-            st.error("⚠️ Survey not found.")
-            st.stop()
-    else:
-        # Preview mode: query using owner_email
-        form_meta = _fetch_form_meta_by_email(target_form_id, owner_email)
-        if not form_meta:
-            form_meta = {
-                "title": "Land public transportation survey",
-                "description": "",
-                "include_demographics": False,
-                "allow_multiple_responses": True,
-                "reach_out_contact": "",
-            }
-    
-    # Force include_demographics for sample form
-    if form_meta.get("title") == "Sentibyahe: System Evaluation Test Form":
-        form_meta["include_demographics"] = True
-        form_meta["include_standard_servqual_questions"] = True
-        # Also force reach_out_contact if empty
-        if not form_meta.get("reach_out_contact"):
-            form_meta["reach_out_contact"] = "We'd love your feedback! 💡\n\nThanks for testing Sentibyahe! Now that you've seen how the system processes your response into the five transport categories, it's time to tell us what you think. Please take 2 quick minutes to evaluate the platform's usability, performance, and overall design. Your feedback is crucial to our research.\n\nhttps://docs.google.com/forms/d/e/1FAIpQLSemJsPRgflhlRLTcgEKidMSfyWS6NZCA5m2CvEJUOQ-JPF3vA/viewform?usp=sharing&ouid=104216160606281095977"
-    
-    # Get questions using form_id and owner_email
-    custom_questions = _fetch_form_questions(target_form_id, owner_email)
-except Exception as e:
-    st.error(f"⚠️ Could not load survey: {str(e)}")
-    st.stop()
-
+            form_meta = _fetch_form_meta_by_email(target_form_id, owner_email)
+            if not form_meta:
+                form_meta = {
+                    "title": "Land public transportation survey",
+                    "description": "",
+                    "include_demographics": False,
+                    "allow_multiple_responses": True,
+                    "reach_out_contact": "",
+                    "include_standard_servqual_questions": True,
+                }
+        
+        if form_meta.get("title") == "Sentibyahe: System Evaluation Test Form":
+            form_meta["include_demographics"] = True
+            form_meta["include_standard_servqual_questions"] = True
+            if not form_meta.get("reach_out_contact"):
+                form_meta["reach_out_contact"] = "We'd love your feedback! 💡\n\nThanks for testing Sentibyahe! Now that you've seen how the system processes your response into the five transport categories, it's time to tell us what you think. Please take 2 quick minutes to evaluate the platform's usability, performance, and overall design. Your feedback is crucial to our research.\n\nhttps://docs.google.com/forms/d/e/1FAIpQLSemJsPRgflhlRLTcgEKidMSfyWS6NZCA5m2CvEJUOQ-JPF3vA/viewform?usp=sharing&ouid=104216160606281095977"
+        
+        custom_questions = _fetch_form_questions(target_form_id, owner_email)
+    except Exception as e:
+        st.error(f"⚠️ Could not load survey: {str(e)}")
+        st.stop()
 # Stable browser-tab id in URL so "one response" survives reload (not just session_state).
 client_cid = None
 if not is_preview:
@@ -350,7 +460,8 @@ def _already_submitted_for_client(public_id: str, cid: str) -> bool:
         return bool(chk.data)
     except Exception:
         return False
-
+    
+loading_screen.empty()
 
 # ── 2. SCHEMA ──
 LPT_TRANSPORT_MODE_OPTIONS = [

@@ -101,6 +101,7 @@ def create_form(admin_email: str, title: str = "Untitled Form", description: str
                 "include_demographics": False,
                 "allow_multiple_responses": True,
                 "reach_out_contact": "",
+                "include_standard_servqual_questions": True,
             }
             try:
                 conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
@@ -224,6 +225,11 @@ def set_current_form(form_id: str):
     st.session_state.pop("meta_desc", None)
     st.session_state.pop("meta_form_name", None)
     st.session_state.pop("meta_reach_out", None)
+    st.session_state.pop("meta_allow_multi", None)
+    st.session_state.pop("meta_include_demo", None)
+    st.session_state.pop("meta_include_servqual", None)
+    st.session_state.pop("_meta_loaded_for_form", None)
+    st.session_state.pop("preview_mode", None)
 
 
 def refresh_form_list(admin_email: str):
