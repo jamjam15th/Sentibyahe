@@ -19,6 +19,7 @@ from forms import (
     get_form,
     refresh_form_list,
     ensure_form_exists,
+    get_form_response_count,
 )
 
 # Demographics dashboard uses donut-style charts: answers must come from a fixed option list.
@@ -621,11 +622,14 @@ def dialog_delete_form_confirmation():
         st.error("Form not found")
         return
     
+    # Get actual response count from database
+    response_count = get_form_response_count(form_id, admin_email)
+    
     st.warning(f"⚠️ **Delete '{form['title']}'?**")
     st.markdown(f"""
     This will permanently delete:
     - The form: **{form['title']}**
-    - All {len([x for x in forms if x['form_id'] == form_id])} responses
+    - All {response_count} responses
     - All form settings and questions
     
     **This cannot be undone.**
