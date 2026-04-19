@@ -203,24 +203,35 @@ def confirm_delete_account():
                 conn.client.table("active_sessions").delete().eq("user_email", admin_email).execute()
                 
                 # Delete the auth user account using Supabase admin API
-                if user_id:
+                # Method 1: Try using secrets from st.secrets (for deployed environments)
+                deleted_user = False
+                SUPABASE_URL = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_URL", "")
+                SUPABASE_SERVICE_ROLE = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_SERVICE_ROLE_KEY", "")
+                
+                # Method 2: Try environment variables (for DigitalOcean with env vars)
+                if not SUPABASE_SERVICE_ROLE:
+                    import os
+                    SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+                
+                if SUPABASE_URL and SUPABASE_SERVICE_ROLE and user_id:
                     try:
-                        SUPABASE_URL = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_URL", "")
-                        SUPABASE_SERVICE_ROLE = st.secrets.get("connections", {}).get("supabase", {}).get("SUPABASE_SERVICE_ROLE_KEY", "")
-                        
-                        if SUPABASE_URL and SUPABASE_SERVICE_ROLE:
-                            # Use admin API to delete user
-                            headers = {
-                                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE}",
-                                "apikey": SUPABASE_SERVICE_ROLE,
-                                "Content-Type": "application/json"
-                            }
-                            delete_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-                            response = requests.delete(delete_url, headers=headers)
-                            if response.status_code not in [200, 204]:
-                                pass  # Silently continue
+                        # Use admin API to delete user
+                        import requests
+                        headers = {
+                            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE}",
+                            "apikey": SUPABASE_SERVICE_ROLE,
+                            "Content-Type": "application/json"
+                        }
+                        delete_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+                        response = requests.delete(delete_url, headers=headers)
+                        if response.status_code in [200, 204]:
+                            deleted_user = True
+                        else:
+                            st.warning(f"⚠️ Auth deletion status: {response.status_code}")
                     except Exception as auth_error:
-                        pass  # Log silently - the user data is already deleted
+                        st.warning(f"⚠️ Could not delete auth via admin API: {auth_error}")
+                elif user_id and not SUPABASE_SERVICE_ROLE:
+                    st.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY not configured - auth credentials not deleted. Please delete your password separately in Account Settings.")
                 
                 # Sign out from Supabase Auth
                 try:
