@@ -67,6 +67,10 @@ st.markdown("""
     .st-emotion-cache-0 {
         display: none !important;
     }
+    
+    .st-emotion-cache-tn0cau {
+        gap: 0px; !important        
+    }
             
     /* 1. KEEP SIDEBAR ON TOP OF LOADER */
     [data-testid="stSidebar"], 
