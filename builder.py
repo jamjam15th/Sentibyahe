@@ -1112,24 +1112,6 @@ questions = fetch_questions(current_form_id, admin_email)
 if not is_sample_form:
     st.markdown("### Manage Questions")
 
-    # Preview mode toggle
-    prev_col1, prev_col2 = st.columns([3, 1])
-    with prev_col1:
-        st.markdown("")
-    with prev_col2:
-        st.toggle(
-            "👁 Preview",
-            value=st.session_state.preview_mode,
-            key="preview_toggle",
-            disabled=is_sample_form,
-        )
-        if st.session_state.get("preview_toggle") is not None:
-            st.session_state.preview_mode = st.session_state.get("preview_toggle", False)
-else:
-    # For sample form, still need to handle preview_toggle to avoid errors
-    if st.session_state.get("preview_toggle") is not None:
-        st.session_state.preview_mode = st.session_state.get("preview_toggle", False)
-
 # ══════════════════════════════════════════
 # ADD NEW QUESTION
 # ══════════════════════════════════════════

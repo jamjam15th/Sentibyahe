@@ -4,6 +4,7 @@ import altair as alt
 import plotly.graph_objects as go
 import re
 import json
+import time
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
 from forms import (
@@ -673,15 +674,6 @@ btn_col1, btn_col2, btn_col3 = st.columns([0.15, 0.7, 0.15])
 with btn_col1:
     if st.button("← Back", use_container_width=True):
         st.switch_page("builder.py")
-with btn_col3:
-    if st.button("🔄 Refresh", use_container_width=True):
-        fetch_dashboard_data.clear()
-        fetch_question_scale_map.clear()
-        fetch_form_questions_schema.clear()
-        fetch_pending_sentiment_count.clear()
-        fetch_pending_response_sentiment_rows.clear()
-        fetch_pending_question_sentiment_rows.clear()
-        st.rerun()
 
 st.markdown("<div style='margin:0.5rem 0'></div>", unsafe_allow_html=True)
 
@@ -2555,3 +2547,22 @@ def render_dashboard():
 
 st.session_state.dashboard_initialized = True
 render_dashboard()
+
+# ══════════════════════════════════════════
+# AUTO-REFRESH LOGIC (Live Dashboard)
+# ══════════════════════════════════════════
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+# Auto-refresh every 5 seconds
+current_time = time.time()
+if current_time - st.session_state.last_refresh >= 5:
+    st.session_state.last_refresh = current_time
+    # Clear all caches to fetch fresh data
+    fetch_dashboard_data.clear()
+    fetch_question_scale_map.clear()
+    fetch_form_questions_schema.clear()
+    fetch_pending_sentiment_count.clear()
+    fetch_pending_response_sentiment_rows.clear()
+    fetch_pending_question_sentiment_rows.clear()
+    st.rerun()

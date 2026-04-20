@@ -101,7 +101,7 @@ def create_form(admin_email: str, title: str = "Untitled Form", description: str
                 "include_demographics": False,
                 "allow_multiple_responses": True,
                 "reach_out_contact": "",
-                "include_standard_servqual_questions": True,
+                "include_standard_servqual_questions": False,
             }
             try:
                 conn.client.table("form_meta").upsert(meta_payload, on_conflict="admin_email,form_id").execute()
