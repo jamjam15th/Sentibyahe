@@ -394,7 +394,7 @@ with tab2:
             csv_data = df_export.to_csv(index=False).encode('utf-8')
             
             st.download_button(
-                label="📥 Download Dataset (CSV)",
+                label="📥 Download Data",
                 data=csv_data,
                 file_name="survey_dataset_export.csv",
                 mime="text/csv",
