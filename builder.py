@@ -139,6 +139,10 @@ st.markdown("""
     # header[data-testid="stHeader"] {
     #     display: none !important;
     # }
+
+    .stAppDeployButton {
+        display: none !important;
+    }
             
     /* Fix invisible text in Expanders */
     [data-testid="stExpander"] summary p {
