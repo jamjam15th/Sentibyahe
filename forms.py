@@ -533,7 +533,7 @@ def create_sample_form_for_new_user(admin_email: str) -> dict | None:
                 "options": [],
                 "is_required": False,
                 "is_demographic": False,
-                "enable_sentiment": True,
+                "enable_sentiment": False,
                 "servqual_dimension": None,
                 "sort_order": 17,
                 "is_locked": True,
