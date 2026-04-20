@@ -48,6 +48,97 @@ st.set_page_config(
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
+# ==========================================
+# LOADING SCREEN
+# ==========================================
+st.markdown("""
+<style>
+    /* Hide Streamlit's Deploy button and toolbar */
+    # [data-testid="stToolbar"] {
+    #     display: none !important;
+    # }
+    # #MainMenu {
+    #     display: none !important;
+    # }
+    # header[data-testid="stHeader"] {
+    #     display: none !important;
+    # }
+            
+    .st-emotion-cache-0 {
+        display: none !important;
+    }
+            
+    /* 1. KEEP SIDEBAR ON TOP OF LOADER */
+    [data-testid="stSidebar"], 
+    [data-testid="stSidebarCollapsedControl"] {
+        z-index: 999999999 !important; /* Highest priority */
+    }
+
+    .stAppDeployButton { display: none !important; }
+
+    /* 2. COMPLETELY HIDE THE APP ROOT */
+    /* visibility: hidden is bulletproof against React hydration overrides */
+    .stApp [data-testid="stAppViewBlockContainer"] {
+        visibility: hidden !important;
+        animation: snapVisible 0.1s forwards 2s !important; /* 1 second wait */
+    }
+
+    /* 3. OVERLAY THAT COVERS EVERYTHING ELSE */
+    #nuclear-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #f0f4f8; /* Matched to your app background */
+        z-index: 999999998; /* Exactly one layer BELOW the sidebar */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        animation: fadeOutNuclear 0.4s ease-out 2s forwards; /* Matches the 1s wait */
+    }
+
+    .spinner {
+        border: 4px solid #ffffff;
+        border-top: 4px solid #1a2e55;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 15px;
+    }
+
+    .loading-text {
+        color: #1a2e55;
+        font-weight: 600;
+        font-family: 'Source Sans Pro', sans-serif;
+        font-size: 1.1rem;
+        letter-spacing: 0.5px;
+    }
+
+    /* 4. KEYFRAMES */
+    @keyframes snapVisible {
+        to { visibility: visible !important; }
+    }
+
+    @keyframes fadeOutNuclear {
+        0% { opacity: 1; visibility: visible; }
+        100% { opacity: 0; visibility: hidden; display: none; }
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<div id="nuclear-loader">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading Sentibyahe...</div>
+</div>
+""", unsafe_allow_html=True)
+
 if "auth_tab" not in st.session_state:
     st.session_state.auth_tab = "login"
 if "tab" in st.query_params:
