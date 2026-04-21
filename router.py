@@ -248,7 +248,7 @@ builder_page     = st.Page("builder.py",            title="Create Form",        
 servqual_page    = st.Page("servqual_info.py",      title="SERVQUAL Guide",      icon=":material/info:")
 settings_page    = st.Page("settings.py",           title="Settings",            icon=":material/settings:")
 public_form_page = st.Page("public_form.py",        title="Take Survey",         icon=":material/assignment:")
-# testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
+testing_page     = st.Page("sentiment_analysis.py", title="Analysis",            icon="📝")
 
 # ── 6. Router ──
 if "form_id" in st.query_params:
