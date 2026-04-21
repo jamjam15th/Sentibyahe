@@ -2185,7 +2185,7 @@ def render_dashboard():
                 else:
                     q_query = (
                         conn.client.table("form_questions")
-                        .select("id, prompt, q_type, is_demographic")
+                        .select("id, prompt, q_type, is_demographic, servqual_dimension")
                         .eq("admin_email", admin_email).eq("form_id", current_form_id)
                         .order("sort_order").execute()
                     )
@@ -2200,11 +2200,32 @@ def render_dashboard():
                         {"prompt": "6. Most frequently used transport mode / Pinakamadalas na sinasakyan", "q_type": "Multiple Choice", "is_required": True, "is_demographic": True},
                     ]
 
+                    # Standard SERVQUAL questionnaire questions (matches exact prompts from public_form.py)
+                    STANDARD_SERVQUAL_QUESTIONS = [
+                        {"prompt": "How would you describe the physical condition, cleanliness, and overall seating comfort of the vehicle you rode recently? (Paano mo ilalarawan ang pisikal na kondisyon, kalinisan, at pangkalahatang komportableng pag-upo sa sasakyang sinakyan mo kamakailan lang?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Tangibles"},
+                        {"prompt": "What can you say about the air ventilation, temperature, and general atmosphere inside the vehicle? (Ano ang masasabi mo sa bentilasyon ng hangin, temperatura, at pangkalahatang kapaligiran sa loob ng sasakyan?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Tangibles"},
+                        {"prompt": "How would you describe the overall reliability and operation of the vehicle during your entire trip? (Paano mo ilalarawan ang pangkalahatang pagiging maaasahan at maayos na takbo ng sasakyan sa buong biyahe mo?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Reliability"},
+                        {"prompt": "What are your thoughts on the affordability of the fare and how your payment and change were handled by the driver/conductor? (Ano ang iyong pananaw sa halaga ng pamasahe at kung paano inasikaso ng drayber/konduktor ang iyong ibinayad at sukli?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Reliability"},
+                        {"prompt": "How would you describe your experience regarding the travel time and the promptness of the ride in reaching your destination? (Paano mo ilalarawan ang iyong karanasan patungkol sa tagal ng biyahe at ang pagiging maagap ng sasakyan patungo sa iyong destinasyon?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Responsiveness"},
+                        {"prompt": "What can you say about the attentiveness of the driver or conductor when passengers needed to get off or communicate their drop-off points? (Ano ang masasabi mo sa pagiging alisto ng driver o konduktor kapag kailangan nang bumaba o makipag-usap ng mga pasahero para sa kanilang bababaan?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Responsiveness"},
+                        {"prompt": "What are your thoughts on how the driver navigated the road and followed traffic rules during your trip? (Ano ang iyong pananaw sa kung paano nagmaneho at sumunod sa batas trapiko ang driver sa iyong biyahe?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Assurance"},
+                        {"prompt": "How would you describe your overall sense of safety and security against incidents like theft or harassment while inside the vehicle? (Paano mo ilalarawan ang iyong pangkalahatang pakiramdam ng kaligtasan at seguridad laban sa mga insidente tulad ng pagnanakaw o harassment habang nasa loob ng sasakyan?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Assurance"},
+                        {"prompt": "What can you say about the behavior, politeness, and overall treatment of passengers by the transport crew? (Ano ang masasabi mo sa pag-uugali, pagiging magalang, at pangkalahatang pagtrato ng mga tauhan sa mga pasahero?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Empathy"},
+                        {"prompt": "What are your thoughts on the transport crew's attentiveness and care for passengers who might need extra assistance, such as Senior Citizens, PWDs, or pregnant woman? (Ano ang pananaw mo sa pagiging maasikaso at pag-aalaga ng mga tauhan sa mga pasaherong maaaring mangailangan ng karagdagang tulong, tulad ng Senior Citizens, PWDs, o mga buntis?)", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": "Empathy"},
+                        {"prompt": "Additional Comments or Suggestions / Karagdagang Komento o Mungkahi", "q_type": "Paragraph", "is_demographic": False, "servqual_dimension": None},
+                    ]
+
                     existing_prompts = {q.get("prompt") for q in all_questions}
                     for std_q in STANDARD_DEMO_QUESTIONS:
                         if std_q.get("prompt") not in existing_prompts:
                             all_questions.append(std_q)
                             existing_prompts.add(std_q.get("prompt"))
+                    
+                    # Always add SERVQUAL questions to respondent detail view
+                    for servqual_q in STANDARD_SERVQUAL_QUESTIONS:
+                        if servqual_q.get("prompt") not in existing_prompts:
+                            all_questions.append(servqual_q)
+                            existing_prompts.add(servqual_q.get("prompt"))
 
                     demo_questions = [q for q in all_questions if q.get("is_demographic")]
                     non_demo_questions = [q for q in all_questions if not q.get("is_demographic")]
@@ -2277,10 +2298,17 @@ def render_dashboard():
                         df_resp_f = df_resp_f[mask]
 
                     st.markdown(f"**Showing {len(df_resp_f)} of {len(df_responses)} responses**")
+                    
                     demo_cols_r = [c for c in df_resp_f.columns if c.startswith("👥 ")]
                     other_cols_r = [c for c in df_resp_f.columns if not c.startswith("👥 ") and c not in ("Respondent ID", "Submitted", "Time")]
-                    col_order_r = ["Respondent ID", "Submitted", "Time"] + demo_cols_r + other_cols_r
-                    col_order_r = [c for c in col_order_r if c in df_resp_f.columns]
+                    
+                    # Filter columns to only show those with at least one non-empty value
+                    cols_with_data = ["Respondent ID", "Submitted", "Time"]
+                    for col in demo_cols_r + other_cols_r:
+                        if df_resp_f[col].astype(str).str.strip().ne("").any():
+                            cols_with_data.append(col)
+                    
+                    col_order_r = [c for c in cols_with_data if c in df_resp_f.columns]
                     st.dataframe(df_resp_f[col_order_r], use_container_width=True, hide_index=True,
                                  height=min(600, 80 + 36 * max(1, len(df_resp_f))))
                     csv_data = df_resp_f[col_order_r].to_csv(index=False)
@@ -2289,6 +2317,51 @@ def render_dashboard():
                         file_name=f"respondents_{current_form_id}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",
                     )
+                    
+                    # Add respondent selection to view detailed responses (shown AFTER table)
+                    st.markdown("---")
+                    col_select, col_blank = st.columns([2, 3])
+                    with col_select:
+                        respondent_options = df_resp_f["Respondent ID"].tolist()
+                        if respondent_options:
+                            selected_respondent = st.selectbox(
+                                "📋 View full details for respondent:",
+                                options=respondent_options,
+                                key="respondent_select",
+                                index=None,
+                                placeholder="Select a respondent ID from table above..."
+                            )
+                            
+                            if selected_respondent:
+                                # Find the full response data for this respondent
+                                selected_resp_data = next((r for r in all_responses.data if str(r.get("id", ""))[:8] == selected_respondent), None)
+                                if selected_resp_data:
+                                    st.markdown(f"### 📝 Detailed Response - Respondent {selected_respondent}")
+                                    st.markdown(f"**Submitted:** {selected_resp_data.get('created_at', '')}")
+                                    
+                                    # Display demographics if available
+                                    demo_ans = selected_resp_data.get("demo_answers", {})
+                                    if isinstance(demo_ans, dict) and demo_ans:
+                                        with st.expander("👥 Demographics", expanded=True):
+                                            for q_prompt, answer in demo_ans.items():
+                                                if isinstance(answer, list):
+                                                    answer_str = ", ".join(str(a) for a in answer)
+                                                else:
+                                                    answer_str = str(answer) if answer else "—"
+                                                st.markdown(f"**{q_prompt}**  \n{answer_str}")
+                                    
+                                    # Display all answers to questions (only those with responses)
+                                    answers = selected_resp_data.get("answers", {})
+                                    answered_questions = {k: v for k, v in answers.items() if v}
+                                    if isinstance(answers, dict) and answered_questions:
+                                        with st.expander("❓ Responses to Questions", expanded=True):
+                                            for q_prompt, answer in answered_questions.items():
+                                                if isinstance(answer, list):
+                                                    answer_str = ", ".join(str(a) for a in answer)
+                                                else:
+                                                    answer_str = str(answer) if answer else "—"
+                                                st.markdown(f"**{q_prompt}**  \n{answer_str}")
+                                                st.divider()
             except Exception as e:
                 st.error(f"Error loading respondent data: {str(e)}")
 
