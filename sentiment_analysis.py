@@ -206,47 +206,46 @@ with tab_single:
     
     if st.button("🚀 Analyze Sentiment"):
         if user_input.strip():
-            with st.status("🔄 Analyzing...", expanded=False):
-                # 🧠 Brain 1: Sentiment Analysis
-                results = _unwrap(classifier(user_input.strip()))
-                scores_dict = {
-                    label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
-                    for res in results
-                }
+            # 🧠 Brain 1: Sentiment Analysis
+            results = _unwrap(classifier(user_input.strip()))
+            scores_dict = {
+                label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
+                for res in results
+            }
 
-                top_sentiment = max(scores_dict, key=scores_dict.get)
-                top_score = scores_dict[top_sentiment]
+            top_sentiment = max(scores_dict, key=scores_dict.get)
+            top_score = scores_dict[top_sentiment]
+        
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        
+        # Using columns for desktop, Streamlit automatically stacks these on mobile
+        col1, col2 = st.columns([1, 1.2])
             
-            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        with col1:
+            st.markdown(f"""
+            <div class="result-card {top_sentiment}">
+                <div class="res-title">{OUR_MODEL_DISPLAY_NAME}</div>
+                <div class="res-sentiment {top_sentiment}">{top_sentiment} {emoji_map[top_sentiment]}</div>
+                <div style="color: var(--steel); font-size: 0.85rem;">Confidence: <strong>{top_score*100:.1f}%</strong></div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Using columns for desktop, Streamlit automatically stacks these on mobile
-            col1, col2 = st.columns([1, 1.2])
-            
-            with col1:
+        with col2:
+            st.markdown("<div style='padding-top: 15px;'><strong>📊 Probability Distribution</strong></div>", unsafe_allow_html=True)
+            for sent in ["Positive", "Neutral", "Negative"]:
+                pct = scores_dict.get(sent, 0) * 100
                 st.markdown(f"""
-                <div class="result-card {top_sentiment}">
-                    <div class="res-title">{OUR_MODEL_DISPLAY_NAME}</div>
-                    <div class="res-sentiment {top_sentiment}">{top_sentiment} {emoji_map[top_sentiment]}</div>
-                    <div style="color: var(--steel); font-size: 0.85rem;">Confidence: <strong>{top_score*100:.1f}%</strong></div>
+                <div class="dist-row">
+                    <div class="dist-label">{sent}</div>
+                    <div class="dist-bar-bg"><div class="dist-bar-fill fill-{sent}" style="width: {pct}%;"></div></div>
+                    <div class="dist-pct">{pct:.1f}%</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            with col2:
-                st.markdown("<div style='padding-top: 15px;'><strong>📊 Probability Distribution</strong></div>", unsafe_allow_html=True)
-                for sent in ["Positive", "Neutral", "Negative"]:
-                    pct = scores_dict.get(sent, 0) * 100
-                    st.markdown(f"""
-                    <div class="dist-row">
-                        <div class="dist-label">{sent}</div>
-                        <div class="dist-bar-bg"><div class="dist-bar-fill fill-{sent}" style="width: {pct}%;"></div></div>
-                        <div class="dist-pct">{pct:.1f}%</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-            if top_sentiment == "Positive":
-                st.balloons()
-        else:
-            st.warning("⚠️ Please enter some text to analyze.")
+        if top_sentiment == "Positive":
+            st.balloons()
+    else:
+        st.warning("⚠️ Please enter some text to analyze.")
 
 with tab_batch:
     st.info("Upload a CSV or Excel file with a column named **feedback** (one comment per row).")
