@@ -826,7 +826,7 @@ sentiment_dimension_descriptions = {
             "weak": "Shows a majority negative response regarding the vehicle's physical upkeep, highlighting widespread issues with cleanliness, seat comfort, or ventilation.",
             "action_strong": "Check the positive feedback to see which vehicle types or routes are getting top marks to sustain these high standards and maintain overall physical comfort.",
             "action_moderate": "Look at the neutral feedback to identify which specific physical responses—like cleanliness, seating, or ventilation—need maintenance to address these gaps and improve overall physical comfort.",
-            "action_weak": "Examine the negative feedback to pinpoint exactly which vehicles or routes are receiving complaints regarding their overall physical upkeep to address these issues and implement necessary improvements."
+            "action_weak": "Examine negative feedback to identify which vehicles or routes receive complaints regarding their physical condition, cleanliness, comfort, and ventilation, and use this information to address issues and implement necessary improvements."
         }
     ),
     "Reliability": (
