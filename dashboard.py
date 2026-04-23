@@ -776,119 +776,105 @@ def _is_demographic_question(prompt: str) -> bool:
 # ══════════════════════════════════════════
 likert_dimension_descriptions = {
     "Tangibles": (
-        "Physical condition of vehicles, terminal facilities, digital platforms (booking apps), and the overall commuting environment.",
+        "Cleanliness, seating comfort, ventilation, and overall physical condition of the vehicle.",
         {
-            "strong": "High scores indicate appreciation for physical or digital improvements.",
-            "moderate": "Mixed scores suggest conditions are acceptable but inconsistent.",
-            "weak": "Low scores point to physical or digital deterioration.",
-            "action_strong": "Review Tangibles questions to identify highest-rated upgrades.",
-            "action_moderate": "Check response logs to identify improvement areas.",
-            "action_weak": "Prioritize physical infrastructure improvements.",
+            "strong": "Shows strong passenger satisfaction regarding the vehicle's overall physical condition, including cleanliness, comfortable seats, and good ventilation.",
+            "moderate": "Score shows mixed passenger satisfaction regarding the vehicle's overall physical condition, with some aspects meeting expectations and others needing improvement.",
+            "weak": "Shows general passenger dissatisfaction regarding the vehicle's physical upkeep, highlighting widespread issues with cleanliness, seat comfort, or ventilation.",
         }
     ),
     "Reliability": (
-        "Consistency of routes, accuracy of app ETAs, ride availability during peak hours, and system dependability amid heavy traffic.",
+        "Smooth vehicle operation, fare affordability, and proper handling of payments and change by the crew.",
         {
-            "strong": "High scores suggest the system is meeting expectations.",
-            "moderate": "Mixed scores indicate service operates but has vulnerabilities.",
-            "weak": "Low scores suggest unpredictable service.",
-            "action_strong": "Maintain current operational schedules.",
-            "action_moderate": "Review response logs for specific bottlenecks.",
-            "action_weak": "Treat system service as a priority issue.",
+            "strong": "Shows strong passenger satisfaction regarding overall operational reliability, including smooth vehicle operation, fair pricing, and proper handling of fares.",
+            "moderate": "Score shows mixed passenger satisfaction regarding overall operational reliability, with some aspects meeting expectations and others needing improvement.",
+            "weak": "Shows general passenger dissatisfaction regarding operational reliability, highlighting widespread issues with vehicle breakdowns, fare affordability, or improper change handling.",
         }
     ),
     "Responsiveness": (
-        "Efficiency in managing terminal queues, swift action on commuter complaints, and agility of in-app customer support.",
+        "Promptness of travel time and the crew's alertness when passengers need to get off.",
         {
-            "strong": "High scores indicate immediate needs are being met.",
-            "moderate": "Mixed scores suggest responsiveness could be improved.",
-            "weak": "Low scores indicate lack of urgency.",
-            "action_strong": "Standardize current queue management strategies.",
-            "action_moderate": "Review logs for service gaps.",
-            "action_weak": "Improve queue management and customer support.",
+            "strong": "Shows strong passenger satisfaction regarding overall responsiveness, including prompt travel times and highly alert crews during passenger drop-offs.",
+            "moderate": "Score shows mixed passenger satisfaction regarding overall responsiveness, with some aspects meeting expectations and others needing improvement.",
+            "weak": "Shows general passenger dissatisfaction regarding overall responsiveness, highlighting widespread issues with prolonged travel times or missed passenger drop-off points.",
         }
     ),
     "Assurance": (
-        "Road safety, driver competence, verified app profiles, strict compliance with fare matrices, and overall public trust.",
+        "Driver compliance with traffic rules, road safety, and security against theft or harassment.",
         {
-            "strong": "High scores point to strong public trust.",
-            "moderate": "Mixed scores indicate some trust issues exist.",
-            "weak": "Low scores indicate breakdown in trust or safety.",
-            "action_strong": "Maintain current safety practices.",
-            "action_moderate": "Investigate specific safety or fairness concerns.",
-            "action_weak": "Priority: address safety and compliance issues.",
+            "strong": "Shows strong passenger satisfaction regarding overall passenger assurance, including safe driving, traffic compliance, and security against threats.",
+            "moderate": "Score shows mixed passenger satisfaction regarding overall passenger assurance, with some aspects meeting expectations and others needing improvement.",
+            "weak": "Shows general passenger dissatisfaction regarding overall passenger assurance, highlighting widespread issues with reckless driving, traffic violations, or internal security.",
         }
     ),
     "Empathy": (
-        "Consideration for commuter struggles, proper implementation of discounts, polite communication, and humane policies.",
+        "Crew politeness, general behavior, and special care given to Seniors, PWDs, and pregnant women.",
         {
-            "strong": "High scores indicate commuters feel respected.",
-            "moderate": "Mixed scores suggest inconsistent empathy.",
-            "weak": "Low scores indicate commuters feel disregarded.",
-            "action_strong": "Sustain current empathetic practices.",
-            "action_moderate": "Review staff interactions for improvement.",
-            "action_weak": "Improve staff training and discount communication.",
+            "strong": "Shows strong passenger satisfaction regarding overall crew empathy, including politeness, good behavior, and special care for vulnerable passengers.",
+            "moderate": "Score shows mixed passenger satisfaction regarding overall crew empathy, with some aspects meeting expectations and others needing improvement.",
+            "weak": "Shows general passenger dissatisfaction regarding overall crew empathy, highlighting widespread issues with rude behavior or neglect towards Seniors, PWDs, or pregnant women.",
         }
-    ),
+    )
 }
 
 sentiment_dimension_descriptions = {
     "Tangibles": (
-        "Physical condition of vehicles, terminal facilities, digital platforms (booking apps), and the overall commuting environment.",
+        "Cleanliness, seating comfort, ventilation, and overall physical condition of the vehicle.",
         {
-            "strong": "Respondents are expressing praise about physical or digital improvements.",
-            "moderate": "Feedback is mixed on physical conditions.",
-            "weak": "Respondents report concerns about physical or digital deterioration.",
-            "action_strong": "Review the positive feedback to identify which upgrades are driving the praise.",
-            "action_moderate": "Review feedback to identify what needs improvement.",
-            "action_weak": "Prioritize physical infrastructure improvements based on feedback.",
+            "strong": "Shows a majority positive response regarding the vehicle's overall physical condition, including cleanliness, comfortable seats, and good ventilation.",
+            "moderate": "Shows a neutral response regarding the vehicle's overall physical condition, with some responses meeting expectations and others needing improvement.",
+            "weak": "Shows a majority negative response regarding the vehicle's physical upkeep, highlighting widespread issues with cleanliness, seat comfort, or ventilation.",
+            "action_strong": "Check the positive feedback to see which vehicle types or routes are getting top marks to sustain these high standards and maintain overall physical comfort.",
+            "action_moderate": "Look at the neutral feedback to identify which specific physical responses—like cleanliness, seating, or ventilation—need maintenance to address these gaps and improve overall physical comfort.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which vehicles or routes are receiving complaints regarding their overall physical upkeep to address these issues and implement necessary improvements."
         }
     ),
     "Reliability": (
-        "Consistency of routes, accuracy of app ETAs, ride availability during peak hours, and system dependability amid heavy traffic.",
+        "Smooth vehicle operation, fare affordability, and proper handling of payments and change by the crew.",
         {
-            "strong": "Positive sentiment suggests the transport system is meeting expectations.",
-            "moderate": "Feedback is mixed on system service.",
-            "weak": "Respondents report unpredictable service.",
-            "action_strong": "Maintain current operational practices.",
-            "action_moderate": "Investigate specific reliability concerns from feedback.",
-            "action_weak": "Treat system service as a priority issue.",
+            "strong": "Shows a majority positive response regarding overall operational reliability, including smooth vehicle operation, fair pricing, and proper handling of fares.",
+            "moderate": "Shows a neutral response regarding overall operational reliability, with some responses meeting expectations and others needing improvement.",
+            "weak": "Shows a majority negative response regarding operational reliability, highlighting widespread issues with vehicle breakdowns, fare affordability, or improper change handling.",
+            "action_strong": "Check the positive feedback to see which routes or crews are getting top marks to sustain these high standards and maintain service reliability.",
+            "action_moderate": "Look at the neutral feedback to identify which specific operational responses—like ride smoothness, fare pricing, or payment handling—need attention to address these inconsistencies and improve service reliability.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which routes or crews are receiving complaints regarding their overall operational reliability to address these issues and improve service consistency."
         }
     ),
     "Responsiveness": (
-        "Efficiency in managing terminal queues, swift action on commuter complaints, and agility of in-app customer support.",
+        "Promptness of travel time and the crew's alertness when passengers need to get off.",
         {
-            "strong": "Commuters feel their immediate needs are being met.",
-            "moderate": "Feedback is mixed on response efficiency.",
-            "weak": "Respondents report a lack of responsiveness.",
-            "action_strong": "Maintain current service strategies.",
-            "action_moderate": "Review feedback to identify service gaps.",
-            "action_weak": "Improve queue management and customer support.",
+            "strong": "Shows a majority positive response regarding overall responsiveness, including prompt travel times and highly alert crews during passenger drop-offs.",
+            "moderate": "Shows a neutral response regarding overall responsiveness, with some responses meeting expectations and others needing improvement.",
+            "weak": "Shows a majority negative response regarding overall responsiveness, highlighting widespread issues with prolonged travel times or missed passenger drop-off points.",
+            "action_strong": "Check the positive feedback to see which routes or crews are getting top marks to sustain these high standards and maintain service promptness.",
+            "action_moderate": "Look at the neutral feedback to identify which specific service responses—like travel speed or drop-off alertness—need coaching to address these delays and improve overall service speed.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which routes or crews are receiving complaints regarding their overall responsiveness to passenger needs to address these gaps and improve service promptness."
         }
     ),
     "Assurance": (
-        "Road safety, driver competence, verified app profiles, strict compliance with fare matrices, and overall public trust.",
+        "Driver compliance with traffic rules, road safety, and security against theft or harassment.",
         {
-            "strong": "High sentiment points to strong public trust in safety and fairness.",
-            "moderate": "Feedback is mixed on trust and safety.",
-            "weak": "Respondents report concerns about safety or trust.",
-            "action_strong": "Maintain current safety and compliance standards.",
-            "action_moderate": "Investigate specific safety or fairness concerns.",
-            "action_weak": "Priority: address safety and compliance concerns.",
+            "strong": "Shows a majority positive response regarding overall passenger assurance, including safe driving, traffic compliance, and security against threats.",
+            "moderate": "Shows a neutral response regarding overall passenger assurance, with some responses meeting expectations and others needing improvement.",
+            "weak": "Shows a majority negative response regarding overall passenger assurance, highlighting widespread issues with reckless driving, traffic violations, or internal security.",
+            "action_strong": "Check the positive feedback to see which routes or drivers are getting top marks to sustain these high standards and maintain passenger safety.",
+            "action_moderate": "Look at the neutral feedback to identify which specific assurance responses—like driving habits, traffic compliance, or internal security—need reinforcement to address these concerns and improve passenger confidence.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which drivers or routes are receiving complaints regarding their overall safety and security practices to address these hazards and improve passenger safety."
         }
     ),
     "Empathy": (
-        "Consideration for commuter struggles, proper implementation of discounts, polite communication, and humane policies.",
+        "Crew politeness, general behavior, and special care given to Seniors, PWDs, and pregnant women.",
         {
-            "strong": "Respondents feel respected and cared for.",
-            "moderate": "Feedback is mixed on empathy and courtesy.",
-            "weak": "Respondents feel disregarded or mistreated.",
-            "action_strong": "Sustain current empathetic practices.",
-            "action_moderate": "Review feedback to improve staff interactions.",
-            "action_weak": "Improve staff training and discount communication.",
+            "strong": "Shows a majority positive response regarding overall crew empathy, including politeness, good behavior, and special care for vulnerable passengers.",
+            "moderate": "Shows a neutral response regarding overall crew empathy, with some responses meeting expectations and others needing improvement.",
+            "weak": "Shows a majority negative response regarding overall crew empathy, highlighting widespread issues with rude behavior or neglect towards Seniors, PWDs, or pregnant women.",
+            "action_strong": "Check the positive feedback to see which crews or routes are getting top marks to sustain these high standards and maintain excellent customer relations.",
+            "action_moderate": "Look at the neutral feedback to identify which specific customer relations aspects—like general politeness or specialized care for vulnerable passengers—need improvement to address these interactions and elevate passenger care.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which crews or routes are receiving complaints regarding their overall empathetic treatment of passengers to address these behaviors and improve customer relations."
         }
-    ),
+    )
 }
+
 
 # ══════════════════════════════════════════
 # MAIN DASHBOARD FRAGMENT
@@ -1463,7 +1449,7 @@ def render_dashboard():
                     names = " · ".join(d for d, _ in sustain)
                     html += f"""<div class="sq-priority-row">
                     <span class="sq-priority-badge" style="background:rgba(74,124,89,0.12);color:#4a7c59;">Sustain — {names}</span>
-                    <span class="sq-priority-text">Positive Net Sentiment. Use exact positive quotes in reports to highlight system strengths.</span>
+                    <span class="sq-priority-text">Positive Net Sentiment. Use exact positive reports to highlight strengths.</span>
                     </div>"""
                 html += '</div></div>'
                 st.markdown(html, unsafe_allow_html=True)
@@ -1938,19 +1924,19 @@ def render_dashboard():
                             triage_html += f"""<div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(176,58,46,0.06);border:1px solid rgba(176,58,46,0.2);border-radius:8px;">
                             <span style="font-size:.65rem;font-weight:700;background:rgba(176,58,46,0.12);color:#b03a2e;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🚨 Urgent</span>
                             <div><div style="font-size:.78rem;font-weight:700;color:#b03a2e;margin-bottom:2px;">{names}</div>
-                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps. Check the Quantitative Tab to pinpoint which metric is pulling the dimension down.</div></div></div>"""
+                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores below 3.0 suggest critical service gaps.</div></div></div>"""
                         if watch_dims_l:
                             names = ", ".join(f"{d} ({s:.2f})" for d, s in watch_dims_l)
                             triage_html += f"""<div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(255,197,112,0.08);border:1px solid rgba(255,197,112,0.3);border-radius:8px;">
                             <span style="font-size:.65rem;font-weight:700;background:rgba(255,197,112,0.2);color:#8b6914;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">🔶 Monitor</span>
                             <div><div style="font-size:.78rem;font-weight:700;color:#8b6914;margin-bottom:2px;">{names}</div>
-                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Borderline scores (3.0–3.99). Targeted improvements in scheduling, communication, or facilities could push these above 4.0.</div></div></div>"""
+                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Borderline scores (3.0–3.99). Targeted improvements could push these above 4.0.</div></div></div>"""
                         if strong_dims_l:
                             names = ", ".join(f"{d} ({s:.2f})" for d, s in strong_dims_l)
                             triage_html += f"""<div style="display:flex;gap:10px;align-items:flex-start;padding:.75rem 1rem;background:rgba(74,124,89,0.06);border:1px solid rgba(74,124,89,0.2);border-radius:8px;">
                             <span style="font-size:.65rem;font-weight:700;background:rgba(74,124,89,0.12);color:#4a7c59;border-radius:4px;padding:.2rem .55rem;white-space:nowrap;flex-shrink:0;margin-top:1px;">✅ Sustain</span>
                             <div><div style="font-size:.78rem;font-weight:700;color:#4a7c59;margin-bottom:2px;">{names}</div>
-                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores at 4.0+ indicate genuine commuter satisfaction. Document what drives these scores and replicate across weaker dimensions.</div></div></div>"""
+                            <div style="font-size:.72rem;color:rgb(80,110,140);line-height:1.5;">Scores at 4.0+ indicate genuine commuter satisfaction.</div></div></div>"""
                         triage_html += '</div>'
                         st.markdown(triage_html, unsafe_allow_html=True)
 
