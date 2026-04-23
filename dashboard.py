@@ -778,56 +778,56 @@ likert_dimension_descriptions = {
     "Tangibles": (
         "Physical condition of vehicles, terminal facilities, digital platforms (booking apps), and the overall commuting environment.",
         {
-            "strong": "High scores here typically indicate that respondents appreciate visible physical or digital improvements.",
-            "moderate": "Mixed scores suggest that conditions are acceptable but inconsistent.",
-            "weak": "Negative sentiment often points to physical or digital deterioration.",
-            "action_strong": "Review the specific Tangibles questions in the Quantitative tab to identify exactly which upgrades received the highest Likert ratings.",
-            "action_moderate": "Check the Likert Response Log chart to separate the acceptable facilities from the lower-scoring ones.",
-            "action_weak": "Prioritize a review of physical infrastructure. Look at the Quantitative breakdown to pinpoint lowest Likert scores.",
+            "strong": "High scores indicate appreciation for physical or digital improvements.",
+            "moderate": "Mixed scores suggest conditions are acceptable but inconsistent.",
+            "weak": "Low scores point to physical or digital deterioration.",
+            "action_strong": "Review Tangibles questions to identify highest-rated upgrades.",
+            "action_moderate": "Check response logs to identify improvement areas.",
+            "action_weak": "Prioritize physical infrastructure improvements.",
         }
     ),
     "Reliability": (
         "Consistency of routes, accuracy of app ETAs, ride availability during peak hours, and system dependability amid heavy traffic.",
         {
-            "strong": "Positive scores suggest the transport system is generally meeting expectations.",
-            "moderate": "Moderate scores indicate that service operates but is vulnerable.",
-            "weak": "Low scores strongly suggest unpredictable service.",
-            "action_strong": "Maintain current operational schedules. Check the Quantitative tab to see which specific reliability metrics contributed most.",
-            "action_moderate": "Review the individual Likert scores for Reliability to spot specific bottlenecks.",
-            "action_weak": "Treat system reliability as a critical issue. Check the bottom-performing questions in the Quantitative tab.",
+            "strong": "High scores suggest the system is meeting expectations.",
+            "moderate": "Mixed scores indicate service operates but has vulnerabilities.",
+            "weak": "Low scores suggest unpredictable service.",
+            "action_strong": "Maintain current operational schedules.",
+            "action_moderate": "Review response logs for specific bottlenecks.",
+            "action_weak": "Treat system service as a priority issue.",
         }
     ),
     "Responsiveness": (
         "Efficiency in managing terminal queues, swift action on commuter complaints, and agility of in-app customer support.",
         {
-            "strong": "This indicates that respondents feel their immediate needs are being met.",
-            "moderate": "Reactions to commuter needs occur, but may be perceived as slow.",
-            "weak": "Negative sentiment usually reflects a perceived lack of urgency.",
-            "action_strong": "Standardize the current queue management and support strategies.",
-            "action_moderate": "Review the individual Likert scores to spot specific service gaps.",
-            "action_weak": "Address queue management and customer support immediately.",
+            "strong": "High scores indicate immediate needs are being met.",
+            "moderate": "Mixed scores suggest responsiveness could be improved.",
+            "weak": "Low scores indicate lack of urgency.",
+            "action_strong": "Standardize current queue management strategies.",
+            "action_moderate": "Review logs for service gaps.",
+            "action_weak": "Improve queue management and customer support.",
         }
     ),
     "Assurance": (
         "Road safety, driver competence, verified app profiles, strict compliance with fare matrices, and overall public trust.",
         {
             "strong": "High scores point to strong public trust.",
-            "moderate": "General trust exists, but specific concerns may be dragging the score down.",
-            "weak": "Low scores indicate a breakdown in trust and safety.",
-            "action_strong": "Leverage this high trust factor. Review the Likert breakdown to confirm what contributed most.",
-            "action_moderate": "Investigate the specific Assurance questions dragging the average down.",
-            "action_weak": "Safety and fare compliance audits are urgently needed.",
+            "moderate": "Mixed scores indicate some trust issues exist.",
+            "weak": "Low scores indicate breakdown in trust or safety.",
+            "action_strong": "Maintain current safety practices.",
+            "action_moderate": "Investigate specific safety or fairness concerns.",
+            "action_weak": "Priority: address safety and compliance issues.",
         }
     ),
     "Empathy": (
         "Consideration for commuter struggles, proper implementation of discounts, polite communication, and humane policies.",
         {
-            "strong": "Positive sentiment suggests that respondents feel considered and respected.",
-            "moderate": "Basic courtesy is observed, but consistent empathy may be lacking.",
-            "weak": "Negative scores typically mean respondents feel financially or personally disregarded.",
-            "action_strong": "Acknowledge and sustain the practices driving this score.",
-            "action_moderate": "Look at the individual Empathy Likert scores to see where the disconnect lies.",
-            "action_weak": "Review the lowest-scoring Empathy questions in the Quantitative tab.",
+            "strong": "High scores indicate commuters feel respected.",
+            "moderate": "Mixed scores suggest inconsistent empathy.",
+            "weak": "Low scores indicate commuters feel disregarded.",
+            "action_strong": "Sustain current empathetic practices.",
+            "action_moderate": "Review staff interactions for improvement.",
+            "action_weak": "Improve staff training and discount communication.",
         }
     ),
 }
@@ -836,66 +836,56 @@ sentiment_dimension_descriptions = {
     "Tangibles": (
         "Physical condition of vehicles, terminal facilities, digital platforms (booking apps), and the overall commuting environment.",
         {
-            "strong": "High Net Sentiment indicates respondents are explicitly writing praise about visible physical or digital improvements.",
-            "moderate": "Mixed sentiment suggests conditions are acceptable but inconsistent.",
-            "neutral": "Balanced feedback indicates physical conditions are meeting expectations on average.",
-            "weak": "Negative Net Sentiment points to physical or digital deterioration.",
-            "action_strong": "Review the positive feedback in the Sentiment Tab to identify exactly which upgrades are driving the praise.",
-            "action_moderate": "Check the Sentiment Feedback Log to separate the acceptable facilities from the problematic ones.",
-            "action_neutral": "Monitor physical conditions and facilities. Maintain current standards.",
-            "action_weak": "Read the raw negative comments in the Sentiment Tab to pinpoint main pain points.",
+            "strong": "Respondents are expressing praise about physical or digital improvements.",
+            "moderate": "Feedback is mixed on physical conditions.",
+            "weak": "Respondents report concerns about physical or digital deterioration.",
+            "action_strong": "Review the positive feedback to identify which upgrades are driving the praise.",
+            "action_moderate": "Review feedback to identify what needs improvement.",
+            "action_weak": "Prioritize physical infrastructure improvements based on feedback.",
         }
     ),
     "Reliability": (
         "Consistency of routes, accuracy of app ETAs, ride availability during peak hours, and system dependability amid heavy traffic.",
         {
             "strong": "Positive sentiment suggests the transport system is meeting expectations.",
-            "moderate": "Moderate scores indicate service operates but is vulnerable.",
-            "neutral": "Balanced feedback indicates service reliability is stable.",
-            "weak": "Low Net Sentiment strongly suggests unpredictable service.",
-            "action_strong": "Maintain current schedules. Read the positive Sentiment Log.",
-            "action_moderate": "Look into neutral and negative comments to identify specific delay sources.",
-            "action_neutral": "Keep monitoring service schedules and track patterns in feedback.",
-            "action_weak": "Treat system reliability as a critical issue. Analyze written complaints.",
+            "moderate": "Feedback is mixed on system service.",
+            "weak": "Respondents report unpredictable service.",
+            "action_strong": "Maintain current operational practices.",
+            "action_moderate": "Investigate specific reliability concerns from feedback.",
+            "action_weak": "Treat system service as a priority issue.",
         }
     ),
     "Responsiveness": (
         "Efficiency in managing terminal queues, swift action on commuter complaints, and agility of in-app customer support.",
         {
             "strong": "Commuters feel their immediate needs are being met.",
-            "moderate": "Reactions to commuter needs occur, but the text feedback shows the system still struggles during peak hours.",
-            "neutral": "Balanced feedback indicates the system responds adequately overall.",
-            "weak": "Negative sentiment usually reflects a perceived lack of urgency.",
-            "action_strong": "Identify the terminals or app features receiving positive written feedback and standardize those strategies.",
-            "action_moderate": "Review neutral/negative text feedback for specific bottlenecks.",
-            "action_neutral": "Continue current response practices. Seek opportunities to optimize.",
-            "action_weak": "Address queue management immediately. Raw text feedback will reveal where commuters feel most abandoned.",
+            "moderate": "Feedback is mixed on response efficiency.",
+            "weak": "Respondents report a lack of responsiveness.",
+            "action_strong": "Maintain current service strategies.",
+            "action_moderate": "Review feedback to identify service gaps.",
+            "action_weak": "Improve queue management and customer support.",
         }
     ),
     "Assurance": (
         "Road safety, driver competence, verified app profiles, strict compliance with fare matrices, and overall public trust.",
         {
-            "strong": "High Net Sentiment points to strong public trust.",
-            "moderate": "General trust exists, but written feedback shows specific concerns.",
-            "neutral": "Balanced feedback indicates commuters feel generally safe and trust the system.",
-            "weak": "Low scores indicate a breakdown in trust.",
-            "action_strong": "Leverage this high trust factor. Maintain strict safety checks.",
-            "action_moderate": "Investigate text feedback to find the specific source of doubt.",
-            "action_neutral": "Maintain current safety standards and fare compliance.",
-            "action_weak": "Safety and fare audits are urgently needed. Read the raw comments.",
+            "strong": "High sentiment points to strong public trust in safety and fairness.",
+            "moderate": "Feedback is mixed on trust and safety.",
+            "weak": "Respondents report concerns about safety or trust.",
+            "action_strong": "Maintain current safety and compliance standards.",
+            "action_moderate": "Investigate specific safety or fairness concerns.",
+            "action_weak": "Priority: address safety and compliance concerns.",
         }
     ),
     "Empathy": (
         "Consideration for commuter struggles, proper implementation of discounts, polite communication, and humane policies.",
         {
-            "strong": "Positive sentiment suggests commuters feel respected.",
-            "moderate": "Basic courtesy is observed, but consistent empathy is lacking.",
-            "neutral": "Balanced feedback indicates commuters are experiencing adequate courtesy.",
-            "weak": "Negative scores mean commuters feel disregarded.",
-            "action_strong": "Acknowledge and sustain practices driving this score based on positive comments.",
-            "action_moderate": "Read the feedback to see where the disconnect lies.",
-            "action_neutral": "Continue training staff on courtesy and discount protocols.",
-            "action_weak": "Review raw feedback closely for complaints about staff hostility or denied discounts.",
+            "strong": "Respondents feel respected and cared for.",
+            "moderate": "Feedback is mixed on empathy and courtesy.",
+            "weak": "Respondents feel disregarded or mistreated.",
+            "action_strong": "Sustain current empathetic practices.",
+            "action_moderate": "Review feedback to improve staff interactions.",
+            "action_weak": "Improve staff training and discount communication.",
         }
     ),
 }
@@ -953,6 +943,16 @@ def render_dashboard():
     all_dim_cols = {**present_servqual_dims}
     if has_general_ratings:
         all_dim_cols["General Ratings"] = GENERAL_RATINGS_COL
+
+    # Define tier classification function (used throughout display)
+    def get_tier(net_score):
+        """Classify sentiment score into tier: strong (>0.5), weak (<-0.5), or moderate"""
+        if net_score > 0.5:
+            return "strong"
+        elif net_score < -0.5:
+            return "weak"
+        else:
+            return "moderate"
 
     has_servqual_data = bool(present_servqual_dims) and df[
         list(present_servqual_dims.values())
@@ -1037,7 +1037,7 @@ def render_dashboard():
         for dim, counts in data.items():
             t = counts["positive"] + counts["neutral"] + counts["negative"]
             totals[dim] = t
-            net_scores[dim] = ((counts["positive"] - counts["negative"]) / t * 100) if t > 0 else 0
+            net_scores[dim] = ((counts["positive"] - counts["negative"]) / t) if t > 0 else 0
         return data, net_scores, totals
 
     dimension_sentiment_data_kpi, dimension_net_scores_kpi, dimension_totals_kpi = _calc_dim_sentiment(df_sent)
@@ -1189,9 +1189,11 @@ def render_dashboard():
                             if dimension_totals_kpi.get(d, 0) > 0]
         if active_sent_dims:
             avg_sentiment = sum(dimension_net_scores_kpi.get(d, 0) for d in active_sent_dims) / len(active_sent_dims)
-            sentiment_display = f"{avg_sentiment:+.1f}%"
+            sentiment_display = f"{avg_sentiment * 100:+.1f}%"
             sentiment_subtext = "Avg sentiment across dimensions"
-            sentiment_color = '#4a7c59' if avg_sentiment > 0 else '#b03a2e' if avg_sentiment < 0 else '#8b9dc3'
+            avg_tier = get_tier(avg_sentiment)
+            tier_color_map = {"strong": "#4a7c59", "weak": "#b03a2e", "moderate": "#999999"}
+            sentiment_color = tier_color_map[avg_tier]
         else:
             sentiment_display, sentiment_subtext, sentiment_color = "N/A", "No sentiment data", '#8b9dc3'
     else:
@@ -1247,7 +1249,7 @@ def render_dashboard():
 
             untagged_total = sum(untagged_sentiment_data.values())
             untagged_net_score = (
-                (untagged_sentiment_data["positive"] - untagged_sentiment_data["negative"]) / untagged_total * 100
+                (untagged_sentiment_data["positive"] - untagged_sentiment_data["negative"]) / untagged_total
             ) if untagged_total > 0 else 0
 
             has_dimension_sentiment = any(dimension_totals.values())
@@ -1283,13 +1285,13 @@ def render_dashboard():
                 with c1:
                     st.markdown('<div class="section-head">Net Sentiment by Dimension</div>', unsafe_allow_html=True)
                     chart = alt.Chart(df_chart).mark_bar().encode(
-                        x=alt.X("Net Sentiment Score:Q", scale=alt.Scale(domain=[-100, 100]),
-                                axis=alt.Axis(title="Net Sentiment Score (%)")),
+                        x=alt.X("Net Sentiment Score:Q", scale=alt.Scale(domain=[-1, 1]),
+                                axis=alt.Axis(title="Net Sentiment Score (-1 to +1)")),
                         y=alt.Y("Dimension:N", sort=["Tangibles", "Reliability", "Responsiveness", "Assurance", "Empathy", "Untagged"]),
                         color=alt.Color("Dimension:N",
                                         scale=alt.Scale(domain=list(dim_colors.keys()), range=list(dim_colors.values())),
                                         legend=None),
-                        tooltip=["Dimension", alt.Tooltip("Net Sentiment Score:Q", format=".1f"), "Total Responses"],
+                        tooltip=["Dimension", alt.Tooltip("Net Sentiment Score:Q", format=".2f"), "Total Responses"],
                     ).properties(height=550)
                     st.altair_chart(chart, use_container_width=True)
 
@@ -1302,38 +1304,36 @@ def render_dashboard():
                             neu = dimension_sentiment_data[dim]["neutral"]
                             neg = dimension_sentiment_data[dim]["negative"]
                             net = dimension_net_scores[dim]
-                            sc = "#4a7c59" if net > 0 else "#b03a2e" if net < 0 else "#8b9dc3"
+                            tier = get_tier(net)
+                            tier_color_map = {"strong": "#4a7c59", "weak": "#b03a2e", "moderate": "#999999"}
+                            sc = tier_color_map[tier]
                             st.markdown(f"""
                             <div style="margin-bottom:1rem;padding:.75rem;border:1px solid rgba(26,50,99,0.12);border-radius:8px;background:rgba(26,50,99,0.03);">
                             <div style="font-weight:700;color:rgb(26,50,99);margin-bottom:.35rem;">{dim}</div>
                             <div style="font-size:.75rem;color:rgb(84,119,146);margin-bottom:.35rem;">😊 {pos} · 😐 {neu} · 😞 {neg}</div>
-                            <div style="font-size:.9rem;font-weight:700;color:{sc};">Net: {net:+.1f}%</div>
+                            <div style="font-size:.9rem;font-weight:700;color:{sc};">Net: {net * 100:+.1f}%</div>
                             </div>""", unsafe_allow_html=True)
 
                     if untagged_total > 0:
+                        untagged_tier = get_tier(untagged_net_score)
+                        tier_color_map = {"strong": "#4a7c59", "weak": "#b03a2e", "moderate": "#999999"}
+                        untagged_color = tier_color_map[untagged_tier]
                         st.markdown(f"""
                         <div style="margin-bottom:1rem;padding:.75rem;border:1px solid rgba(26,50,99,0.12);border-radius:8px;background:rgba(150,150,150,0.03);">
                         <div style="font-weight:700;color:rgb(100,100,100);margin-bottom:.35rem;">Untagged</div>
                         <div style="font-size:.75rem;color:rgb(120,120,120);margin-bottom:.35rem;">
                             😊 {untagged_sentiment_data["positive"]} · 😐 {untagged_sentiment_data["neutral"]} · 😞 {untagged_sentiment_data["negative"]}
                         </div>
-                        <div style="font-size:.9rem;font-weight:700;color:#999999;">Net: {untagged_net_score:+.1f}%</div>
+                        <div style="font-size:.9rem;font-weight:700;color:{untagged_color};">Net: {untagged_net_score * 100:+.1f}%</div>
                         </div>""", unsafe_allow_html=True)
 
                 st.markdown("---")
                 st.markdown('<div class="section-head">📋 Analysis Conclusion</div>', unsafe_allow_html=True)
 
-                def get_tier(net_score):
-                    if net_score > 20: return "strong"
-                    elif net_score > 0: return "moderate"
-                    elif net_score == 0: return "neutral"
-                    else: return "weak"
-
                 tier_labels = {
-                    "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "#4a7c59"),
-                    "moderate": ("🙂", "Mixed",                       "#8b7a2e", "rgba(139,157,195,0.08)", "#8b9dc3"),
-                    "neutral":  ("😐", "Neutral",                     "#8b9dc3", "rgba(139,157,195,0.08)", "#8b9dc3"),
-                    "weak":     ("⚠️", "Needs attention (Negative)", "#b03a2e", "rgba(176,58,46,0.08)",  "#b03a2e"),
+                    "strong":   ("✅", "Positive",  "#4a7c59", "rgba(74,124,89,0.08)",   "#4a7c59"),
+                    "moderate": ("😐", "Neutral",   "#8b9dc3", "rgba(139,157,195,0.08)", "#8b9dc3"),
+                    "weak":     ("⚠️", "Negative",  "#b03a2e", "rgba(176,58,46,0.08)",  "#b03a2e"),
                 }
 
                 dim_order = ["Tangibles", "Reliability", "Responsiveness", "Assurance", "Empathy"]
@@ -1349,34 +1349,30 @@ def render_dashboard():
                 else:
                     avg_net = 0
 
-                if avg_net > 20: overall_tone, overall_color = "Predominantly positive", "#4a7c59"
-                elif avg_net > 0: overall_tone, overall_color = "Moderately positive", "#6ba587"
-                elif avg_net == 0: overall_tone, overall_color = "Neutral (Balanced)", "#8b9dc3"
-                elif avg_net > -20: overall_tone, overall_color = "Mixed with negative lean", "#8b9dc3"
-                else: overall_tone, overall_color = "Predominantly negative", "#b03a2e"
+                if avg_net > 50: overall_tone, overall_color = "Positive", "#4a7c59"
+                elif avg_net >= -0.5: overall_tone, overall_color = "Neutral", "#8b9dc3"
+                else: overall_tone, overall_color = "Negative", "#b03a2e"
 
                 tone_descriptions = {
-                    "Predominantly positive": "Respondents are expressing strong satisfaction with the service.",
-                    "Moderately positive": "Respondents generally have positive experiences, though some areas could improve.",
-                    "Neutral (Balanced)": "Sentiment is perfectly balanced with equal positive and negative comments.",
-                    "Mixed with negative lean": "Sentiment is divided with significant concerns but some positive aspects.",
-                    "Predominantly negative": "Respondents express significant dissatisfaction requiring urgent attention.",
+                    "Positive": "Respondents are expressing satisfaction with the service.",
+                    "Neutral": "Feedback is balanced with both positive and negative aspects.",
+                    "Negative": "Respondents express concerns requiring attention.",
                 }
                 overall_description = tone_descriptions.get(overall_tone, "")
 
                 max_score = max([s for d, s in active_dims], default=0)
                 min_score = min([s for d, s in active_dims], default=0)
-                if max_score > 20 and min_score < 20:
-                    weakest_dims = [d for d, s in active_dims if s < 20]
-                elif min_score <= 0:
-                    weakest_dims = [d for d, s in active_dims if s <= 0]
+                if max_score > 0.5 and min_score < 0.5:
+                    weakest_dims = [d for d, s in active_dims if s < 0.5]
+                elif min_score <= -0.5:
+                    weakest_dims = [d for d, s in active_dims if s <= -0.5]
                 else:
                     weakest_dims = []
                 weakest_text = ", ".join(weakest_dims) if weakest_dims else ""
 
-                urgent  = [(d, s) for d, s in active_dims if s < 0]
-                watch   = [(d, s) for d, s in active_dims if 0 <= s <= 20]
-                sustain = [(d, s) for d, s in active_dims if s > 20]
+                urgent  = [(d, s) for d, s in active_dims if s < -0.5]
+                watch   = [(d, s) for d, s in active_dims if -0.5 <= s <= 0.5]
+                sustain = [(d, s) for d, s in active_dims if s > 0.5]
 
                 responsive_css = """
                 <style>
@@ -1412,7 +1408,7 @@ def render_dashboard():
                 html += f"""
                 <div class="sq-banner">
                 <div class="sq-banner-label">Overall sentiment signal</div>
-                <div class="sq-banner-value" style="color:{overall_color};">{overall_tone} ({avg_net:+.1f}% net)</div>
+                <div class="sq-banner-value" style="color:{overall_color};">{overall_tone} ({avg_net * 100:+.1f}% net)</div>
                 <div class="sq-banner-desc">
                     <div style="margin-bottom: 0.6rem;"><strong>{overall_description}</strong></div>
                     <div>{"Areas of concern: <strong>" + weakest_text + "</strong>" if weakest_text else "Collect more responses to deepen analysis."}</div>
@@ -1442,7 +1438,7 @@ def render_dashboard():
                     <div class="sq-dim-card {no_right} {no_bottom}" style="background:{bg};">
                     <div class="sq-dim-name">{dim}</div>
                     <div class="sq-dim-desc">{desc}</div>
-                    <div class="sq-dim-score" style="color:{color};">{net:+.1f}%</div>
+                    <div class="sq-dim-score" style="color:{color};">{net * 100:+.1f}%</div>
                     <div class="sq-dim-pill" style="border:1px solid {border_color};color:{color};">{emoji} {label}</div>
                     <div class="sq-dim-insight">{insight}</div>
                     <div class="sq-dim-action" style="border-left-color:{border_color};">{action}</div>
@@ -1461,13 +1457,13 @@ def render_dashboard():
                     names = " · ".join(d for d, _ in watch)
                     html += f"""<div class="sq-priority-row">
                     <span class="sq-priority-badge" style="background:rgba(255,197,112,0.18);color:#8b5e1a;">Monitor — {names}</span>
-                    <span class="sq-priority-text">Low but positive. Read neutral and negative logs to see what prevents a purely positive experience.</span>
+                    <span class="sq-priority-text">Neutral Net Sentiment. Read neutral and negative logs to see what prevents a purely positive experience.</span>
                     </div>"""
                 if sustain:
                     names = " · ".join(d for d, _ in sustain)
                     html += f"""<div class="sq-priority-row">
                     <span class="sq-priority-badge" style="background:rgba(74,124,89,0.12);color:#4a7c59;">Sustain — {names}</span>
-                    <span class="sq-priority-text">Strong praise. Use exact positive quotes in reports to highlight system strengths.</span>
+                    <span class="sq-priority-text">Positive Net Sentiment. Use exact positive quotes in reports to highlight system strengths.</span>
                     </div>"""
                 html += '</div></div>'
                 st.markdown(html, unsafe_allow_html=True)
@@ -1852,15 +1848,15 @@ def render_dashboard():
                         return "strong" if score >= 4 else "moderate" if score >= 3 else "weak"
 
                     tier_config = {
-                        "strong":   ("✅", "Strong (Positive)",          "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
-                        "moderate": ("🔶", "Needs monitoring",            "#8b6914", "rgba(255,197,112,0.10)", "rgba(255,197,112,0.35)"),
-                        "weak":     ("🚨", "Needs attention (Negative)",  "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
+                        "strong":   ("✅", "Positive",   "#4a7c59", "rgba(74,124,89,0.08)",   "rgba(74,124,89,0.25)"),
+                        "moderate": ("😐", "Neutral",    "#8b9dc3", "rgba(139,157,195,0.10)", "rgba(139,157,195,0.35)"),
+                        "weak":     ("⚠️", "Negative",   "#b03a2e", "rgba(176,58,46,0.08)",   "rgba(176,58,46,0.3)"),
                     }
 
                     all_scores = list(dim_means.values())
                     avg_satisfaction = sum(all_scores) / len(all_scores) if all_scores else 0
                     overall_tier = "strong" if avg_satisfaction >= 4 else "moderate" if avg_satisfaction >= 3 else "weak"
-                    overall_label_t = {"strong": "Strong overall satisfaction", "moderate": "Moderate overall satisfaction", "weak": "Low overall satisfaction"}[overall_tier]
+                    overall_label_t = {"strong": "Positive", "moderate": "Neutral", "weak": "Negative"}[overall_tier]
                     overall_emoji_t, _, overall_color_t, overall_bg_t, _ = tier_config[overall_tier]
 
                     sorted_dims = sorted(dim_means.items(), key=lambda x: x[1])

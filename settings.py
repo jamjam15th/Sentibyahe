@@ -372,6 +372,14 @@ with tab1:
     if st.button("🗑️ Permanently Delete Account", type="primary", disabled=not delete_enabled):
         confirm_delete_account()
 
+    st.divider()
+
+    st.markdown("### 📝 Sentiment Analysis")
+    st.write("Run AI-powered sentiment analysis on your collected survey responses.")
+
+    if st.button("📝 Go to Analysis", use_container_width=True):
+        st.switch_page("sentiment_analysis.py")
+
 # ── TAB 2: DATA MANAGEMENT ──
 with tab2:
     st.markdown("### Export Dataset")

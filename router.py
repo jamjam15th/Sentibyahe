@@ -283,7 +283,6 @@ elif st.session_state.get("logged_in", False):
         """)
 
         st.html('<span class="sidebar-nav-label">Navigation</span>')
-        st.page_link(testing_page)
         st.page_link(builder_page)
         st.page_link(servqual_page)
         st.page_link(settings_page)
