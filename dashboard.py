@@ -860,10 +860,10 @@ sentiment_dimension_descriptions = {
         "Cleanliness, seating comfort, ventilation, and overall physical condition of the vehicle.",
         {
             "strong": "Shows a majority positive response regarding the vehicle's overall physical condition, including cleanliness, comfortable seats, and good ventilation.",
-            "moderate": "Shows a neutral response regarding the vehicle's overall physical condition, with some responses meeting expectations and others needing improvement.",
+            "moderate": "Shows a mixed response regarding the vehicle's overall physical condition, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding the vehicle's physical upkeep, highlighting widespread issues with cleanliness, seat comfort, or ventilation.",
             "action_strong": "Check the positive feedback to see which vehicle types or routes are getting top marks to sustain these high standards and maintain overall physical comfort.",
-            "action_moderate": "Look at the neutral feedback to identify which specific physical responses—like cleanliness, seating, or ventilation—need maintenance to address these gaps and improve overall physical comfort.",
+            "action_moderate": "Look at the feedback to identify which specific physical responses—like cleanliness, seating, or ventilation—need maintenance to address these gaps and improve overall physical comfort.",
             "action_weak": "Examine negative feedback to identify which vehicles or routes receive complaints regarding their physical condition, cleanliness, comfort, and ventilation, and use this information to address issues and implement necessary improvements."
         }
     ),
@@ -871,10 +871,10 @@ sentiment_dimension_descriptions = {
         "Smooth vehicle operation, fare affordability, and proper handling of payments and change by the crew.",
         {
             "strong": "Shows a majority positive response regarding overall operational reliability, including smooth vehicle operation, fair pricing, and proper handling of fares.",
-            "moderate": "Shows a neutral response regarding overall operational reliability, with some responses meeting expectations and others needing improvement.",
+            "moderate": "Shows a mixed response regarding overall operational reliability, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding operational reliability, highlighting widespread issues with vehicle breakdowns, fare affordability, or improper change handling.",
             "action_strong": "Check the positive feedback to see which routes or crews are getting top marks to sustain these high standards and maintain service reliability.",
-            "action_moderate": "Look at the neutral feedback to identify which specific operational responses—like ride smoothness, fare pricing, or payment handling—need attention to address these inconsistencies and improve service reliability.",
+            "action_moderate": "Look at the feedback to identify which specific operational responses—like ride smoothness, fare pricing, or payment handling—need attention to address these inconsistencies and improve service reliability.",
             "action_weak": "Examine the negative feedback to pinpoint exactly which routes or crews are receiving complaints regarding their overall operational reliability to address these issues and improve service consistency."
         }
     ),
@@ -882,10 +882,10 @@ sentiment_dimension_descriptions = {
         "Promptness of travel time and the crew's alertness when passengers need to get off.",
         {
             "strong": "Shows a majority positive response regarding overall responsiveness, including prompt travel times and highly alert crews during passenger drop-offs.",
-            "moderate": "Shows a neutral response regarding overall responsiveness, with some responses meeting expectations and others needing improvement.",
+            "moderate": "Shows a mixed response regarding overall responsiveness, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding overall responsiveness, highlighting widespread issues with prolonged travel times or missed passenger drop-off points.",
             "action_strong": "Check the positive feedback to see which routes or crews are getting top marks to sustain these high standards and maintain service promptness.",
-            "action_moderate": "Look at the neutral feedback to identify which specific service responses—like travel speed or drop-off alertness—need coaching to address these delays and improve overall service speed.",
+            "action_moderate": "Look at the feedback to identify which specific service responses—like travel speed or drop-off alertness—need coaching to address these delays and improve overall service speed.",
             "action_weak": "Examine the negative feedback to pinpoint exactly which routes or crews are receiving complaints regarding their overall responsiveness to passenger needs to address these gaps and improve service promptness."
         }
     ),
@@ -893,10 +893,10 @@ sentiment_dimension_descriptions = {
         "Driver compliance with traffic rules, road safety, and security against theft or harassment.",
         {
             "strong": "Shows a majority positive response regarding overall passenger assurance, including safe driving, traffic compliance, and security against threats.",
-            "moderate": "Shows a neutral response regarding overall passenger assurance, with some responses meeting expectations and others needing improvement.",
+            "moderate": "Shows a mixed response regarding overall passenger assurance, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding overall passenger assurance, highlighting widespread issues with reckless driving, traffic violations, or internal security.",
             "action_strong": "Check the positive feedback to see which routes or drivers are getting top marks to sustain these high standards and maintain passenger safety.",
-            "action_moderate": "Look at the neutral feedback to identify which specific assurance responses—like driving habits, traffic compliance, or internal security—need reinforcement to address these concerns and improve passenger confidence.",
+            "action_moderate": "Look at the feedback to identify which specific assurance responses—like driving habits, traffic compliance, or internal security—need reinforcement to address these concerns and improve passenger confidence.",
             "action_weak": "Examine the negative feedback to pinpoint exactly which drivers or routes are receiving complaints regarding their overall safety and security practices to address these hazards and improve passenger safety."
         }
     ),
@@ -904,7 +904,7 @@ sentiment_dimension_descriptions = {
         "Crew politeness, general behavior, and special care given to Seniors, PWDs, and pregnant women.",
         {
             "strong": "Shows a majority positive response regarding overall crew empathy, including politeness, good behavior, and special care for vulnerable passengers.",
-            "moderate": "Shows a neutral response regarding overall crew empathy, with some responses meeting expectations and others needing improvement.",
+            "moderate": "Shows a mixed response regarding overall crew empathy, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding overall crew empathy, highlighting widespread issues with rude behavior or neglect towards Seniors, PWDs, or pregnant women.",
             "action_strong": "Check the positive feedback to see which crews or routes are getting top marks to sustain these high standards and maintain excellent commuter relations.",
             "action_moderate": "Look at the neutral feedback to identify which specific commuter relations aspects—like general politeness or specialized care for vulnerable passengers—need improvement to address these interactions and elevate passenger care.",
