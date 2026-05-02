@@ -5,7 +5,7 @@
 
 ## High-Level Overview
 
-This is a **Streamlit-based survey and sentiment analysis platform** designed specifically for collecting and analyzing customer feedback on land public transportation services. The platform enables transportation agencies to create custom feedback surveys, collect responses from passengers via a public form, automatically analyze sentiment from text responses, and visualize insights through a comprehensive dashboard. It solves the critical problem of transforming unstructured passenger feedback into structured, actionable intelligence using machine learning sentiment analysis and the SERVQUAL framework to measure service quality across five key dimensions.
+This is a **Streamlit-based survey and sentiment analysis platform** designed specifically for collecting and analyzing commuter feedback on land public transportation services. The platform enables transportation agencies to create custom feedback surveys, collect responses from passengers via a public form, automatically analyze sentiment from text responses, and visualize insights through a comprehensive dashboard. It solves the critical problem of transforming unstructured passenger feedback into structured, actionable intelligence using machine learning sentiment analysis and the SERVQUAL framework to measure service quality across five key dimensions.
 
 ---
 

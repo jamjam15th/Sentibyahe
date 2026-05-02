@@ -559,7 +559,7 @@ in your survey (e.g. open feedback or SERVQUAL ratings).
 
 @st.dialog("Create New Form")
 def dialog_create_form():
-    form_title = st.text_input("Form title", placeholder="e.g. Customer Feedback Survey")
+    form_title = st.text_input("Form title", placeholder="e.g. Commuter Feedback Survey")
     form_desc = st.text_area("Description (optional)", placeholder="e.g. Collect feedback about our services")
     
     col1, col2 = st.columns(2)
@@ -1510,17 +1510,9 @@ else:
                     if not all_selected:
                         # Select all
                         st.session_state.selected_ids |= all_visible_ids
-                        
-                        # 🔥 IMPORTANT: Update checkbox UI states
-                        for q in visible_questions:
-                            st.session_state[f"chk_{q['id']}"] = True
                     else:
                         # Deselect all
                         st.session_state.selected_ids -= all_visible_ids
-                        
-                        # 🔥 IMPORTANT: Update checkbox UI states
-                        for q in visible_questions:
-                            st.session_state[f"chk_{q['id']}"] = False
 
                     st.rerun()
         st.markdown("<div style='margin-bottom:1rem'></div>", unsafe_allow_html=True)

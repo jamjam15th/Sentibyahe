@@ -145,7 +145,7 @@ st.markdown("""
     <h1>ℹ️ SERVQUAL Framework</h1>
     <p>
     The <strong>SERVQUAL</strong> model is a widely-recognized framework for measuring service quality. 
-    It evaluates customer perceptions across five key dimensions to help you understand and improve your service delivery.
+    It evaluates commuter perceptions across five key dimensions to help you understand and improve your service delivery.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -179,7 +179,7 @@ st.markdown("""
 - **Reliability** ✅: Ability to perform services accurately and dependably
 - **Responsiveness** ⚡: Willingness to help and provide prompt service
 - **Assurance** 🛡️: Knowledge, courtesy, and ability to inspire confidence
-- **Empathy** 💙: Individualized attention and understanding of customer needs
+- **Empathy** 💙: Individualized attention and understanding of commuter needs
 
 Use these dimensions as you design your survey to ensure comprehensive quality assessment.
 """)

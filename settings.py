@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json
 from st_supabase_connection import SupabaseConnection
 import requests
 
@@ -321,7 +322,7 @@ st.markdown("""
 # ══════════════════════════════════════════
 # 3. TABS LAYOUT
 # ══════════════════════════════════════════
-tab1, tab2 = st.tabs(["👤 Profile & Security", "💾 Data Management"])
+tab1, tab2, tab3 = st.tabs(["👤 Profile & Security", "💾 Data Management", "📊 Dashboard Settings"])
 
 # ── TAB 1: PROFILE & SECURITY ──
 with tab1:
@@ -425,3 +426,132 @@ with tab2:
             st.balloons()
         except Exception as e:
             st.error(f"Failed: {e}")
+
+# ── TAB 3: DASHBOARD SETTINGS ──
+with tab3:
+    st.markdown("### 📊 Bubble Chart Word Filters")
+    st.markdown("""
+    <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #0284c7; margin-bottom: 1.5rem;">
+        <p style="margin: 0 0 0.5rem 0;"><strong>💡 What is this?</strong></p>
+        <p style="margin: 0; font-size: 0.95rem; color: #0c4a6e;">
+            Exclude specific words from appearing in the <strong>"Commuter Insights: What Words Describe What?"</strong> 
+            bubble chart visualization. This helps focus the analysis on meaningful insights by filtering out generic or 
+            irrelevant terms.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("#### ❓ Why Use This?")
+    st.markdown("""
+    - **Remove generic words** – Filter out common filler words (e.g., "thing", "stuff", "ok")
+    - **Focus on insights** – Highlight words that truly describe your service quality
+    - **Reduce noise** – Eliminate words that don't add analytical value
+    - **Customize analysis** – Tailor the visualization to your research needs
+    """)
+    
+    # Get list of forms for the current user
+    try:
+        forms_res = conn.client.table("form_list").select("form_id, title").eq("admin_email", admin_email).order("title").execute()
+        forms_list = forms_res.data or []
+        
+        if not forms_list:
+            st.warning("📝 No forms found. Create a form first to manage dashboard settings.")
+        else:
+            # Select which form to configure
+            form_options = {f["title"]: f["form_id"] for f in forms_list}
+            selected_form_name = st.selectbox("Select Form to Configure", list(form_options.keys()), key="dashboard_form_select")
+            selected_form_id = form_options[selected_form_name]
+            
+            # Get current form meta
+            try:
+                meta_res = conn.client.table("form_meta").select("*").eq("form_id", selected_form_id).eq("admin_email", admin_email).limit(1).execute()
+                form_meta = meta_res.data[0] if meta_res.data else {}
+                
+                # Get current excluded words (stored as JSON array)
+                excluded_words = form_meta.get("excluded_bubble_words", [])
+                if isinstance(excluded_words, str):
+                    try:
+                        excluded_words = json.loads(excluded_words)
+                    except:
+                        excluded_words = [w.strip() for w in excluded_words.split(",") if w.strip()]
+                elif not isinstance(excluded_words, list):
+                    excluded_words = []
+                
+                st.markdown(f"#### Words to Exclude from '{selected_form_name}'")
+                
+                # Text area for adding words
+                words_text = st.text_area(
+                    "Enter words to exclude (one per line):",
+                    value="\n".join(excluded_words),
+                    height=150,
+                    placeholder="e.g.\nthing\nstuff\nok\nvery\njust",
+                    key="excluded_words_input"
+                )
+                
+                # Parse the input
+                new_excluded_words = [w.strip().lower() for w in words_text.split("\n") if w.strip()]
+                new_excluded_words = list(dict.fromkeys(new_excluded_words))  # Remove duplicates while preserving order
+                
+                # Show preview
+                if new_excluded_words:
+                    st.markdown("**Preview of words to be excluded:**")
+                    word_tags = " ".join([f"🏷️ `{w}`" for w in new_excluded_words[:20]])
+                    st.markdown(word_tags)
+                    if len(new_excluded_words) > 20:
+                        st.caption(f"... and {len(new_excluded_words) - 20} more words")
+                else:
+                    st.caption("No words selected for exclusion")
+                
+                # Save button
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("💾 Save Exclusion List", use_container_width=True):
+                        try:
+                            import json
+                            # Update form_meta with the excluded words
+                            conn.client.table("form_meta").update({
+                                "excluded_bubble_words": json.dumps(new_excluded_words)
+                            }).eq("form_id", selected_form_id).eq("admin_email", admin_email).execute()
+                            
+                            st.success(f"✅ Saved {len(new_excluded_words)} excluded word(s)!")
+                            st.info("🔄 The bubble chart will be updated the next time you visit the dashboard.")
+                        except Exception as e:
+                            st.error(f"Failed to save: {e}")
+                
+                with col2:
+                    if st.button("🔄 Clear All", use_container_width=True):
+                        try:
+                            conn.client.table("form_meta").update({
+                                "excluded_bubble_words": json.dumps([])
+                            }).eq("form_id", selected_form_id).eq("admin_email", admin_email).execute()
+                            
+                            st.success("✅ All excluded words cleared!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to clear: {e}")
+                
+                # Show current count stats
+                st.divider()
+                st.markdown("#### 📈 Statistics")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.metric("Excluded Words", len(new_excluded_words) if new_excluded_words else 0)
+                with col_b:
+                    st.metric("Status", "Active" if new_excluded_words else "No filters")
+                
+                # Show tips
+                st.markdown("#### 💡 Tips")
+                st.markdown("""
+                - **Use lowercase** – Words are automatically converted to lowercase for matching
+                - **Be specific** – Use exact words you want to exclude
+                - **Check your data** – Review the bubble chart first to identify words to filter
+                - **Changes take effect immediately** – Next dashboard reload will show the effect
+                - **One word per line** – Each word must be on a separate line
+                """)
+                
+            except Exception as e:
+                st.error(f"Error loading form settings: {e}")
+                
+    except Exception as e:
+        st.error(f"Error loading forms: {e}")

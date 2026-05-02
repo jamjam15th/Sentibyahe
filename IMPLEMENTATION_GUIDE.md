@@ -99,7 +99,7 @@ When you first log in after the upgrade:
 
 1. Go to "Form Builder" 🛠️
 2. Click **➕ Create New Form**
-3. Enter form title (e.g., "Q4 Customer Satisfaction")
+3. Enter form title (e.g., "Q4 Commuter Satisfaction")
 4. Click **Create**
 5. You're now editing the new form
 6. Add questions as usual

@@ -10,3 +10,5 @@ protobuf
 streamlit-extras
 extra-streamlit-components
 openpyxl
+emoji
+nltk

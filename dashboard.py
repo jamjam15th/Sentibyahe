@@ -4,7 +4,11 @@ import altair as alt
 import plotly.graph_objects as go
 import re
 import json
+import emoji
 import time
+import urllib.request           
+import nltk                     
+from nltk.corpus import stopwords
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
 from forms import (
@@ -364,9 +368,9 @@ def load_model():
         if os.path.exists(local_model_path) and os.path.exists(os.path.join(local_model_path, "model.safetensors")):
             model_path = local_model_path
         else:
-            model_path = "jamjam15th/land-public-transportation-model-2"
+            model_path = "jamjam15th/chelles-model"
     else:
-        model_path = "jamjam15th/land-public-transportation-model-2"
+        model_path = "jamjam15th/chelles-model"
     
     return transformers.pipeline(
         "sentiment-analysis",
@@ -375,6 +379,36 @@ def load_model():
         top_k=None,
         device=-1,
     )
+
+def demojize_text(text: str) -> str:
+    """
+    Convert emojis to their text descriptions for better sentiment analysis.
+    
+    WHY THIS MATTERS:
+    When someone submits feedback with emojis like "Great service! 👍", the AI sentiment
+    analyzer struggles to understand the emoji because it reads it as a symbol, not words.
+    
+    WHAT IT DOES:
+    This function converts emojis to text so the AI can understand them:
+    - Before: "MRT was late 😭" 
+    - After:  "MRT was late :loudly_crying_face:"
+    
+    Now the AI sees the word "crying_face" and understands the emotional context (sadness).
+    This makes sentiment analysis more accurate.
+    
+    REAL EXAMPLES:
+    - 👍 becomes :thumbs_up: → AI knows it's positive
+    - 😭 becomes :loudly_crying_face: → AI knows it's negative/sad
+    - ❤️ becomes :red_heart: → AI knows it's affectionate
+    - 😤 becomes :angry_face: → AI knows it's frustrated
+    
+    USED IN:
+    - Overall response sentiment analysis
+    - Per-question sentiment analysis
+    Before analyzing any feedback, emojis are converted to text so the model understands
+    the emotional tone.
+    """
+    return emoji.demojize(text, delimiters=(':', ':'))
 
 @st.cache_data(max_entries=5000, show_spinner=False)
 def analyze_text(text: str) -> tuple[str, float]:
@@ -543,7 +577,9 @@ def run_pending_response_sentiment(email: str, form_id: str):
         if not raw:
             continue
         try:
-            label, score = analyze_text(raw)
+            # Convert emojis to text for better sentiment understanding
+            processed_raw = demojize_text(raw)
+            label, score = analyze_text(processed_raw)
             batch_updates.append({
                 "id": row["id"],
                 "sentiment_status": label,
@@ -584,7 +620,9 @@ def run_pending_question_sentiment(email: str, form_id: str):
                 text = q_data.get("text", "").strip()
                 if text:
                     try:
-                        label, score = analyze_text(text)
+                        # Convert emojis to text for better sentiment understanding
+                        processed_text = demojize_text(text)
+                        label, score = analyze_text(processed_text)
                         q_data["sentiment"] = label
                         q_data["confidence"] = score
                         updated = True
@@ -868,9 +906,9 @@ sentiment_dimension_descriptions = {
             "strong": "Shows a majority positive response regarding overall crew empathy, including politeness, good behavior, and special care for vulnerable passengers.",
             "moderate": "Shows a neutral response regarding overall crew empathy, with some responses meeting expectations and others needing improvement.",
             "weak": "Shows a majority negative response regarding overall crew empathy, highlighting widespread issues with rude behavior or neglect towards Seniors, PWDs, or pregnant women.",
-            "action_strong": "Check the positive feedback to see which crews or routes are getting top marks to sustain these high standards and maintain excellent customer relations.",
-            "action_moderate": "Look at the neutral feedback to identify which specific customer relations aspects—like general politeness or specialized care for vulnerable passengers—need improvement to address these interactions and elevate passenger care.",
-            "action_weak": "Examine the negative feedback to pinpoint exactly which crews or routes are receiving complaints regarding their overall empathetic treatment of passengers to address these behaviors and improve customer relations."
+            "action_strong": "Check the positive feedback to see which crews or routes are getting top marks to sustain these high standards and maintain excellent commuter relations.",
+            "action_moderate": "Look at the neutral feedback to identify which specific commuter relations aspects—like general politeness or specialized care for vulnerable passengers—need improvement to address these interactions and elevate passenger care.",
+            "action_weak": "Examine the negative feedback to pinpoint exactly which crews or routes are receiving complaints regarding their overall empathetic treatment of passengers to address these behaviors and improve commuter relations."
         }
     )
 }
@@ -1335,7 +1373,7 @@ def render_dashboard():
                 else:
                     avg_net = 0
 
-                if avg_net > 50: overall_tone, overall_color = "Positive", "#4a7c59"
+                if avg_net > 0.5: overall_tone, overall_color = "Positive", "#4a7c59"
                 elif avg_net >= -0.5: overall_tone, overall_color = "Neutral", "#8b9dc3"
                 else: overall_tone, overall_color = "Negative", "#b03a2e"
 
@@ -1498,6 +1536,66 @@ def render_dashboard():
             <div class="kpi-value neg">{neg_rate:.1f}%</div>
             <div class="kpi-sub">{neg_count} responses</div>
             </div>""", unsafe_allow_html=True)
+
+            # ─────────────────────────────────────────────────────────────────────────────
+            # DEFINE VOCABULARY & CONFIGURATION (outside if/else for proper scope)
+            # ─────────────────────────────────────────────────────────────────────────────
+
+            DESCRIPTIVE_WORDS = {
+                "positive": [
+                    "maganda","magaan","clean","comfortable","mabilis","fast","kind","mabait",
+                    "helpful","tumutulong","polite","educated","professional","cozy",
+                    "excellent","good","nice","efficient","safe","secure","reliable","consistent",
+                    "organized","tidy","punctual","courteous","friendly","accommodating","smooth",
+                    "pleasant","affordable","fair","honest","caring","attentive",
+                ],
+                "negative": [
+                    "masama","masikip","dirty","uncomfortable","mabagal","slow","rude","bastos",
+                    "unhelpful","unprofessional","poor","bad","awful",
+                    "unsafe","dangerous","unreliable","late","broken","damaged","old","rusty",
+                    "crowded","messy","impolite","unfriendly","disrespectful","annoying",
+                    "overpriced","expensive","cramped","smelly","noisy","delayed",
+                ],
+            }
+
+            SUBJECTS = {
+                "vehicle":     ["bus","jeep","sasakyan","vehicle","biyahe","coach"],
+                "driver":      ["driver","conductor","mandirigma","operator","kuya"],
+                "seats":       ["seat","chair","upuan","cushion","legroom"],
+                "cleanliness": ["clean","dirty","hygiene","linis","garbage","trash"],
+                "service":     ["service","serbisyo","experience","ride","trip"],
+                "speed":       ["speed","time","duration","mabilis","mabagal","bilis","fast","slow"],
+                "staff":       ["staff","crew","attendant","personnel","workers"],
+                "route":       ["route","stop","station","destination"],
+                "safety":      ["safety","secure","safe","ligtas","accident","reckless"],
+                "fare":        ["fare","bayad","pamasahe","change","sukli","payment"],
+                "comfort":     ["comfort","comfortable","uncomfortable","ginhawa","cramped","masikip"],
+                "ventilation": ["air","aircon","fan","ventilation","hangin","temperatura","smell"],
+            }
+
+            DEMO_QUESTION_SET = {
+                "What is your age bracket?","What is your gender?",
+                "What is your primary occupation?",
+                "What primary land public transportation mode do you usually use?",
+                "Which PUV or transport types do you usually ride or use? (Select all that apply)",
+                "Which land public transportation modes do you usually use? (Select all that apply)",
+                "How often do you commute?",
+            }
+
+            DIMENSION_ORDER = ["Tangibles","Reliability","Responsiveness","Assurance","Empathy"]
+
+            DIM_THEME = {
+                "Tangibles":      {"accent":"#818cf8","bg":"#eef2ff","icon":"🚌","dark":"#4f46e5"},
+                "Reliability":    {"accent":"#22d3ee","bg":"#e0f7fa","icon":"⏰","dark":"#0891b2"},
+                "Responsiveness": {"accent":"#a78bfa","bg":"#ede9fe","icon":"⚡","dark":"#7c3aed"},
+                "Assurance":      {"accent":"#f472b6","bg":"#fce7f3","icon":"🛡️","dark":"#db2777"},
+                "Empathy":        {"accent":"#34d399","bg":"#d1fae5","icon":"❤️","dark":"#059669"},
+            }
+
+            SENT_COLOR  = {"Positive":"#4ade80","Negative":"#f87171","Neutral":"#94a3b8"}
+            SENT_DARK   = {"Positive":"#16a34a","Negative":"#dc2626","Neutral":"#6b7280"}
+            SENT_BG     = {"Positive":"#dcfce7","Negative":"#fee2e2","Neutral":"#f3f4f6"}
+            SENT_EMOJI  = {"Positive":"😊","Negative":"😞","Neutral":"😐"}
 
             if df_sent.empty:
                 st.markdown("""<div class="empty-tab"><div class="icon">💬</div>
@@ -1718,212 +1816,687 @@ def render_dashboard():
                 else:
                     st.info("No per-question sentiment analysis available.")
 
-    # ─────────────────────────────────
-    # TAB 2 — Numerical
-    # ─────────────────────────────────
-    with tab2:
-        col_sq = st.columns(1)[0]
-        sq_display = (
-            f"{overall_avg:.2f}<span style='font-size:1rem'> /5</span>"
-            if has_servqual_data else "N/A"
-        )
-        col_sq.markdown(f"""<div class="kpi-card">
-          <div class="kpi-title">Overall SERVQUAL</div>
-          <div class="kpi-value gold">{sq_display}</div>
-          <div class="kpi-sub">{"Avg of 5 SERVQUAL dimensions" if has_servqual_data else "No SERVQUAL tags yet"}</div>
-        </div>""", unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
+                st.markdown("---")
 
-        with st.expander("🕸 Servqual Radar", expanded=True):
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-            <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">SERVQUAL Guide (Likert Scale Only)</div>
-            <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This radar summarizes <strong>land public transportation</strong> feedback from Likert questions tagged to SERVQUAL dimensions.<br>
-                <strong>Scale conversion:</strong> any Likert scale above <strong>5</strong> is normalized to a <strong>1–5</strong> scale.<br>
-                <strong>How to read:</strong> each spoke is one dimension; farther from center means stronger perceived quality.
-            </div>
-            </div>
-            """, unsafe_allow_html=True)
+                @st.cache_data(show_spinner=False)
+                def load_combined_stopwords():
+                    # 1. Load English stopwords via NLTK
+                    try:
+                        nltk.data.find('corpora/stopwords')
+                    except LookupError:
+                        nltk.download('stopwords', quiet=True)
+                    
+                    eng_stops = set(stopwords.words('english'))
+                    
+                    # 2. Fetch Tagalog stopwords direct from the stopwords-iso GitHub repo
+                    tl_stops = set()
+                    github_url = "https://raw.githubusercontent.com/stopwords-iso/stopwords-tl/master/stopwords-tl.txt"
+                    
+                    try:
+                        req = urllib.request.Request(github_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req) as response:
+                            content = response.read().decode('utf-8')
+                            tl_stops = set(word.strip().lower() for word in content.splitlines() if word.strip())
+                    except Exception as e:
+                        st.warning(f"⚠️ Hindi ma-fetch ang Tagalog stopwords mula sa GitHub: {e}")
+                    
+                    # 3. Custom filler words sa chat/text na madalas gamitin ng Pinoy
+                    custom_stops = {
+                        # Tagalog Fillers & Variations
+                        "po", "opo", "yung", "ung", "iyong", "yong", "yon", "yun",
+                        "lng", "lang", "lamang", "namn", "naman", "man",
+                        "nyo", "nya", "niya", "nila", "sila", "siya", "kayo", "tayo", "kami",
+                        "namin", "natin", "kanila", "kanya", "ninyo", "niyo",
+                        "eh", "ah", "oh", "nga", "ng", "nang", "mga", "ang",
+                        "din", "rin", "pang", "pa", "na", "ba", "kasi", "kase", "dahil",
+                        "para", "kaya", "tas", "tapos", "tsaka", "chaka", "saka",
+                        "ito", "yan", "iyan", "iyon", "doon", "dun", "dito", "diyan", "jan", "dyan",
+                        "daw", "raw", "talaga", "masyado", "sobra", "medyo", "halos",
+                        "kahit", "pero", "sana", "pati", "tulad", "gaya", "parang",
+                        "ano", "sino", "saan", "bakit", "bat", "paano", "pano", "kailan",
+                        "nito", "niyan", "niyon", "pag", "kapag", "kung", "habang", "kundi",
+                        "maging", "bilang", "ayon", "kay", "kina", "muna", "pala", "paki",
+                        "ganun", "ganyan", "ganito", "ganoon", "bale", "nawa",
+                        "yata", "ata", "siguro", "baka", "ewan", "pwede", "pede", "wala", "lalo", "mas"
+                        
+                        # English Chat Fillers & Common Slangs (that NLTK might miss)
+                        "ok", "okay", "alright", "yeah", "yes", "no", "nah", "pls", "plz", "please",
+                        "thx", "thanks", "ty", "very", "too", "so", "much", "really", "just", 
+                        "like", "literally", "basically", "actually", "anyway", "btw", "fyi",
+                        "omg", "idk", "lol", "tbh", "imho", "kinda", "sorta", "maybe", "perhaps",
+                        "always", "never", "sometimes", "often", "usually", "also", "then", "than",
+                        "now", "later", "today", "tomorrow", "yesterday", "here", "there",
+                        "anything", "everything", "nothing", "something", "someone", "anyone",
+                        "everyone", "nobody", "anybody", "somebody", "everybody",
+                        "well", "hmm", "uhm", "uh", "wow", "asap"
+                    }
+                    
+                    # Pagsamahin lahat ng lists!
+                    return eng_stops.union(tl_stops).union(custom_stops)
 
-            if not has_servqual_data and not has_general_ratings:
-                st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
-                <p>No SERVQUAL dimension scores yet.<br>
-                In <strong>Form Builder</strong>, add Likert questions and assign them to SERVQUAL dimensions.</p>
-                </div>""", unsafe_allow_html=True)
-            else:
-                ndf_f = df[list(present_servqual_dims.values())].copy()
-                obs_max_f = ndf_f.max().max()
-                sm_f = float(obs_max_f) if (not pd.isna(obs_max_f) and obs_max_f > 5) else 5
-                for col in present_servqual_dims.values():
-                    ndf_f[col] = ndf_f[col].apply(lambda x: normalize_to_5(x, sm_f))
+                def extract_word_insights(df_sent, sent_col, q_text_to_id, form_schema, form_schema_full, excluded_words=None):
+                    insight_raw      = {}
+                    bubble_resp_map  = {}
 
-                dim_means = {}
-                if has_servqual_data:
-                    dim_means.update({
-                        k: float(ndf_f[v].mean())
-                        for k, v in present_servqual_dims.items()
-                        if not pd.isna(ndf_f[v].mean())
-                    })
-                if has_general_ratings:
-                    gr = [row[GENERAL_RATINGS_COL] for _, row in df.iterrows()
-                          if GENERAL_RATINGS_COL in row and pd.notna(row[GENERAL_RATINGS_COL])]
-                    if gr:
-                        dim_means["General Ratings"] = sum(gr) / len(gr)
+                    # Tawagin ang auto-fetcher natin
+                    STOPWORDS = load_combined_stopwords()
+                    
+                    # Add user-excluded words to stopwords
+                    if excluded_words:
+                        if isinstance(excluded_words, str):
+                            try:
+                                excluded_words = json.loads(excluded_words)
+                            except:
+                                excluded_words = [w.strip().lower() for w in excluded_words.split(",") if w.strip()]
+                        if isinstance(excluded_words, list):
+                            STOPWORDS = STOPWORDS.union(set(w.lower() for w in excluded_words))
 
-                labels = list(dim_means.keys())
-                values = list(dim_means.values())
+                    for _, row in df_sent.iterrows():
+                        ans_map = row.get("answers", {})
+                        qs      = row.get("question_sentiments", {})
+                        if not isinstance(ans_map, dict) or not isinstance(qs, dict):
+                            continue
 
-                if not values:
-                    st.markdown("""<div class="empty-tab"><div class="icon">🕸</div>
-                    <p>No dimension scores match the current filters.</p>
-                    </div>""", unsafe_allow_html=True)
-                else:
-                    col_r1, col_r2 = st.columns([3, 2])
-                    with col_r1:
-                        st.markdown('<div class="section-head">SERVQUAL Dimension Averages</div>', unsafe_allow_html=True)
-                        v_closed = values + [values[0]]
-                        l_closed = labels + [labels[0]]
-                        fig = go.Figure()
-                        fig.add_trace(go.Scatterpolar(
-                            r=v_closed, theta=l_closed, fill="toself",
-                            fillcolor="rgba(26,50,99,0.25)",
-                            line=dict(color="rgb(26,50,99)", width=3),
-                            marker=dict(size=8, color="#ffc570"),
-                            name="Likert (Tagged)", showlegend=True,
-                        ))
-                        fig.update_layout(
-                            polar=dict(
-                                bgcolor="rgba(0,0,0,0)",
-                                radialaxis=dict(visible=True, range=[0, 5], tickvals=[1, 2, 3, 4, 5],
-                                                tickfont=dict(size=10, color="rgb(120,148,172)"),
-                                                gridcolor="rgba(84,119,146,0.2)", linecolor="rgba(84,119,146,0.2)"),
-                                angularaxis=dict(tickfont=dict(size=12, color="rgb(26,50,99)", family="Mulish"),
-                                                 gridcolor="rgba(84,119,146,0.15)"),
-                            ),
-                            showlegend=True,
-                            legend=dict(x=1.05, y=1, font=dict(size=10)),
-                            margin=dict(t=40, b=40, l=60, r=100),
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            height=360,
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+                        for question, answer in ans_map.items():
+                            answer_text = str(answer).strip() if answer is not None else ""
+                            if not answer_text or len(answer_text) < 5 or question in DEMO_QUESTION_SET:
+                                continue
+                            if pd.notna(pd.to_numeric(answer_text, errors="coerce")):
+                                continue
 
-                    with col_r2:
-                        st.markdown('<div class="section-head">Dimension Scores</div>', unsafe_allow_html=True)
-                        for dim, mean_val in dim_means.items():
-                            display_dim = "Untagged Ratings" if dim == "General Ratings" else dim
-                            pct = (mean_val / 5) * 100
-                            color = "#4a7c59" if mean_val >= 4 else "#8b9dc3" if mean_val >= 3 else "#b03a2e"
+                            q_id   = q_text_to_id.get(question)
+                            q_data = None
+                            if q_id:
+                                q_data = qs.get(q_id, {})
+                            if not q_data or not isinstance(q_data, dict):
+                                q_data = qs.get(question, {})
+                            if not isinstance(q_data, dict):
+                                continue
+                            if q_data.get("enable_sentiment") is False:
+                                continue
+                            q_sentiment = str(q_data.get("sentiment", "")).upper().strip()
+                            if not q_sentiment or q_sentiment == "PENDING":
+                                continue
+
+                            q_dimension = q_data.get("dimension")
+                            if not q_dimension and q_id:
+                                q_dimension = form_schema_full.get("by_id", {}).get(str(q_id), {}).get("dimension")
+                            if not q_dimension:
+                                q_dimension = form_schema.get(question, {}).get("dimension")
+                            if not q_dimension:
+                                q_dimension = "Untagged"
+
+                            answer_lower = answer_text.lower()
+                            # Kunin lahat ng words na may 3 o higit pang letters
+                            words = re.findall(r'\b[a-z]{3,}\b', answer_lower)
+
+                            # Filter out stopwords (Awtomatikong natatanggal lahat ng nasa GitHub list)
+                            meaningful_words = [w for w in words if w not in STOPWORDS]
+
+                            if not meaningful_words:
+                                continue
+
+                            # set() is used so a word is only counted once per response
+                            for word in set(meaningful_words): 
+                                insight_key = word
+                                bubble_key  = f"{word}|{q_dimension}" 
+
+                                dim_bucket = insight_raw.setdefault(q_dimension, {})
+                                if insight_key not in dim_bucket:
+                                    dim_bucket[insight_key] = {
+                                        "positive":0, "negative":0, "neutral":0,
+                                        "word": word,
+                                    }
+                                
+                                sk = q_sentiment.lower() if q_sentiment in ("POSITIVE","NEGATIVE") else "neutral"
+                                if sk in ("positive","negative","neutral"):
+                                    dim_bucket[insight_key][sk] += 1
+
+                                q_conf = q_data.get("confidence") or q_data.get("sentiment_score")
+                                created_at = row.get("created_at")
+                                resp_entry = {
+                                    "Question":   question,
+                                    "Answer":     answer_text,
+                                    "Sentiment":  q_sentiment,
+                                    "Confidence": f"{q_conf*100:.1f}%" if pd.notna(q_conf) else "N/A",
+                                    "Submitted":  created_at.strftime("%Y-%m-%d %H:%M") 
+                                                  if hasattr(created_at, "strftime") else str(created_at),
+                                    "Dimension":  q_dimension,
+                                }
+                                
+                                bucket = bubble_resp_map.setdefault(bubble_key, [])
+                                if resp_entry not in bucket:
+                                    bucket.append(resp_entry)
+
+                    dimension_insights = {}
+                    for dim in DIMENSION_ORDER:
+                        if dim not in insight_raw:
+                            continue
+                        bubbles = []
+                        for ik, counts in insight_raw[dim].items():
+                            total = counts["positive"] + counts["negative"] + counts["neutral"]
+                            
+                            if total < 1: 
+                                continue
+                                
+                            # NET SENTIMENT SCORE LOGIC: (Pos - Neg) / Total * 100
+                            net_score = ((counts["positive"] - counts["negative"]) / total) * 100
+                            
+                            if net_score > 50:
+                                sentiment = "Positive"
+                            elif net_score < -50:
+                                sentiment = "Negative"
+                            else:
+                                sentiment = "Neutral"
+                                
+                            bubbles.append({
+                                "word":       counts["word"],
+                                "total":      total,
+                                "positive":   counts["positive"],
+                                "negative":   counts["negative"],
+                                "neutral":    counts["neutral"],
+                                "sentiment":  sentiment,
+                                "bubble_key": f"{counts['word']}|{dim}",
+                            })
+                        
+                        bubbles.sort(key=lambda x: x["total"], reverse=True)
+                        if bubbles:
+                            dimension_insights[dim] = bubbles[:15]
+
+                    return dimension_insights, bubble_resp_map
+
+
+                # ─────────────────────────────────────────────────────────────────────────────
+                # SVG BUBBLE CHART
+                # ─────────────────────────────────────────────────────────────────────────────
+
+                def build_svg_bubble_chart(dimension_insights):
+                    W, H     = 1200, 500
+                    PAD_L    = 68
+                    PAD_T    = 48
+                    PAD_B    = 86
+                    PAD_R    = 28
+                    CHART_W  = W - PAD_L - PAD_R
+                    CHART_H  = H - PAD_T - PAD_B
+
+                    active_dims = [d for d in DIMENSION_ORDER if d in dimension_insights]
+                    n_dims      = len(active_dims)
+                    col_w       = CHART_W / n_dims
+
+                    all_totals = [b["total"] for d in active_dims for b in dimension_insights[d]]
+                    max_total  = max(all_totals) if all_totals else 10
+                    y_max      = max(max_total + 2, 10)
+
+                    def y_to_px(val):
+                        return PAD_T + CHART_H - (val / y_max) * CHART_H
+
+                    L = []
+
+                    # ── defs ──────────────────────────────────────────────────────────────────
+                    L.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
+                            f'style="width:100%;height:auto;display:block;border-radius:16px;'
+                            f'box-shadow:0 24px 64px rgba(0,0,0,.38);">')
+                    L.append('<defs>')
+                    L.append(
+                        "<style>"
+                        "@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');"
+                        ".bc { font-family:'DM Sans',sans-serif; }"
+                        ".bc-grp:hover .bc-tip  { opacity:1; }"
+                        ".bc-grp:hover .bc-main { filter:brightness(1.18) drop-shadow(0 0 12px currentColor); }"
+                        ".bc-tip  { opacity:0; pointer-events:none; transition:opacity .18s ease; }"
+                        ".bc-main { transition:filter .2s ease; }"
+                        "@keyframes bc-pop { 0%  { transform:scale(0); opacity:0; } 68% { transform:scale(1.1); } 100%{ transform:scale(1); opacity:1; } }"
+                        ".bc-anim { animation:bc-pop .55s cubic-bezier(.34,1.56,.64,1) both; }"
+                        "</style>"
+                    )
+
+                    # Radial gradients
+                    for sent, c1, c2 in [
+                        ("Positive","#86efac","#16a34a"),
+                        ("Negative","#fca5a5","#dc2626"),
+                        ("Neutral", "#cbd5e1","#64748b"),
+                    ]:
+                        L.append(f'<radialGradient id="rg-{sent}" cx="32%" cy="28%" r="68%">')
+                        L.append(f'  <stop offset="0%" stop-color="{c1}"/>')
+                        L.append(f'  <stop offset="100%" stop-color="{c2}" stop-opacity=".7"/>')
+                        L.append(f'</radialGradient>')
+
+                    # Drop-shadow / glow filters
+                    for sent, gc in [("Positive","74,222,128"),("Negative","248,113,113"),("Neutral","148,163,184")]:
+                        L.append(f'<filter id="gf-{sent}" x="-60%" y="-60%" width="220%" height="220%">')
+                        L.append(f'  <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>')
+                        L.append(f'  <feFlood flood-color="rgb({gc})" flood-opacity=".5" result="c"/>')
+                        L.append(f'  <feComposite in="c" in2="b" operator="in" result="g"/>')
+                        L.append(f'  <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>')
+                        L.append(f'</filter>')
+
+                    # Tooltip drop shadow
+                    L.append('<filter id="tshadow" x="-10%" y="-10%" width="120%" height="130%">')
+                    L.append('  <feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity=".25"/>')
+                    L.append('</filter>')
+
+                    L.append('</defs>')
+
+                    # ── Background ─────────────────────────────────────────────────────────────
+                    L.append(f'<rect width="{W}" height="{H}" rx="16" fill="#0d1526"/>')
+                    # Subtle dot grid
+                    L.append('<pattern id="dots" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">')
+                    L.append('  <circle cx="14" cy="14" r=".9" fill="#1a2744"/>')
+                    L.append('</pattern>')
+                    L.append(f'<rect width="{W}" height="{H}" rx="16" fill="url(#dots)"/>')
+                    # Top gradient highlight
+                    L.append(f'<rect width="{W}" height="100" rx="16" '
+                            f'fill="url(#topshine)" opacity=".4"/>')
+                    L.append('<linearGradient id="topshine" x1="0" y1="0" x2="0" y2="1">')
+                    L.append('  <stop offset="0%" stop-color="#ffffff" stop-opacity=".04"/>')
+                    L.append('  <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>')
+                    L.append('</linearGradient>')
+
+                    # ── Y-axis ─────────────────────────────────────────────────────────────────
+                    L.append(f'<line x1="{PAD_L}" y1="{PAD_T-4}" x2="{PAD_L}" y2="{PAD_T+CHART_H+4}" '
+                            f'stroke="#2d3f66" stroke-width="1.5"/>')
+
+                    for i in range(6):
+                        val = round(y_max * i / 5)
+                        py  = y_to_px(val)
+                        L.append(f'<line x1="{PAD_L+1}" y1="{py:.1f}" x2="{W-PAD_R}" y2="{py:.1f}" '
+                                f'stroke="#1a2744" stroke-width="1" stroke-dasharray="5 4"/>')
+                        L.append(f'<text x="{PAD_L-8}" y="{py+4:.1f}" text-anchor="end" font-size="11" '
+                                f'fill="#4a6fa5" class="bc">{val}</text>')
+
+                    L.append(f'<text transform="rotate(-90 20 {PAD_T+CHART_H//2})" '
+                            f'x="20" y="{PAD_T+CHART_H//2}" text-anchor="middle" '
+                            f'font-size="11" font-weight="700" fill="#4a6fa5" letter-spacing="1" class="bc">'
+                            f'MENTIONS</text>')
+
+                    # ── Dimension columns ──────────────────────────────────────────────────────
+                    for ci, dim in enumerate(active_dims):
+                        theme   = DIM_THEME[dim]
+                        bubbles = dimension_insights[dim]
+                        x0      = PAD_L + ci * col_w
+                        xc      = x0 + col_w / 2
+
+                        # Column divider
+                        if ci > 0:
+                            L.append(f'<line x1="{x0:.1f}" y1="{PAD_T}" x2="{x0:.1f}" y2="{PAD_T+CHART_H}" '
+                                    f'stroke="#1a2744" stroke-width="1"/>')
+
+                        # Subtle column bg on hover (always slight tint)
+                        L.append(f'<rect x="{x0+1:.1f}" y="{PAD_T}" width="{col_w-2:.1f}" height="{CHART_H}" '
+                                f'fill="{theme["accent"]}" opacity=".025" rx="4"/>')
+
+                        # Bottom accent bar + dimension label
+                        bar_w = min(col_w * 0.55, 90)
+                        L.append(f'<rect x="{xc - bar_w/2:.1f}" y="{PAD_T+CHART_H+6}" '
+                                f'width="{bar_w:.1f}" height="3" rx="2" fill="{theme["accent"]}"/>')
+                        L.append(f'<text x="{xc:.1f}" y="{PAD_T+CHART_H+26}" text-anchor="middle" '
+                                f'font-size="12.5" font-weight="800" fill="{theme["accent"]}" class="bc">'
+                                f'{theme["icon"]} {dim}</text>')
+
+                        # ── Bubbles ───────────────────────────────────────────────────────────
+                        n      = len(bubbles)
+                        max_r  = min(36, (col_w * 0.38))
+                        min_r  = 13
+
+                        for bi, b in enumerate(bubbles):
+                            sent  = b["sentiment"]
+                            total = b["total"]
+                            word  = b["word"] # <-- pinalitan ang desc at subj
+                            pos   = b["positive"]
+                            neg   = b["negative"]
+                            neu   = b["neutral"]
+
+                            ratio = (total - 2) / max(y_max - 2, 1)
+                            r     = min_r + ratio * (max_r - min_r)
+                            cy    = y_to_px(total)
+                            cy    = max(PAD_T + r + 3, min(PAD_T + CHART_H - r - 3, cy))
+
+                            # Horizontal spread
+                            spread = col_w * 0.68
+                            if n == 1:
+                                offset = 0.0
+                            else:
+                                offset = spread * (bi / (n - 1) - 0.5)
+                            cx = xc + offset
+                            cx = max(x0 + r + 4, min(x0 + col_w - r - 4, cx))
+
+                            delay = f"{ci*0.07 + bi*0.055:.2f}s"
+                            gf    = f"gf-{sent}"
+
+                            L.append(f'<g class="bc-grp" style="transform-origin:{cx:.1f}px {cy:.1f}px;">')
+
+                            # Outer glow halo & Main bubble
+                            L.append(f'  <circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r+7:.1f}" fill="{SENT_COLOR[sent]}" opacity=".10"/>')
+                            L.append(f'  <circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="url(#rg-{sent})" filter="url(#{gf})" opacity=".92" class="bc-main bc-anim" style="animation-delay:{delay};transform-origin:{cx:.1f}px {cy:.1f}px;"/>')
+                            L.append(f'  <ellipse cx="{cx - r*0.27:.1f}" cy="{cy - r*0.3:.1f}" rx="{r*0.28:.1f}" ry="{r*0.17:.1f}" fill="white" opacity=".28" class="bc-anim" style="animation-delay:{delay};"/>')
+
+                            # Single Word Label (Centered)
+                            fs_w = max(9, min(14, int(r * 0.55)))
+                            L.append(f'  <text x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" '
+                                    f'dominant-baseline="middle" font-size="{fs_w}" font-weight="800" '
+                                    f'fill="white" class="bc" '
+                                    f'style="pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.7);">'
+                                    f'{word[:8].upper()}</text>')
+
+                            # Frequency badge
+                            bx = cx + r * 0.65
+                            by_ = cy - r * 0.65
+                            L.append(f'  <circle cx="{bx:.1f}" cy="{by_:.1f}" r="10.5" fill="#0d1526" opacity=".88"/>')
+                            L.append(f'  <text x="{bx:.1f}" y="{by_+1:.1f}" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="800" fill="{SENT_COLOR[sent]}" class="bc">{total}</text>')
+
+                            # ── Hover tooltip ─────────────────────────────────────────────────
+                            TW, TH = 192, 80 # Made slightly shorter since no subject
+                            tx = min(cx - TW/2, W - TW - 6)
+                            tx = max(tx, PAD_L + 4)
+                            ty = cy - r - TH - 14
+                            if ty < PAD_T - 4:
+                                ty = cy + r + 10
+
+                            sc = SENT_COLOR[sent]
+                            L.append(f'  <g class="bc-tip">')
+                            L.append(f'    <rect x="{tx:.1f}" y="{ty:.1f}" width="{TW}" height="{TH}" rx="11" fill="#1a2236" stroke="{sc}" stroke-width="1.5" filter="url(#tshadow)"/>')
+                            L.append(f'    <polygon points="{cx:.1f},{ty+TH+1} {cx-7:.1f},{ty+TH-7} {cx+7:.1f},{ty+TH-7}" fill="#1a2236" stroke="{sc}" stroke-width="1"/>')
+                            L.append(f'    <polygon points="{cx:.1f},{ty+TH} {cx-6:.1f},{ty+TH-7} {cx+6:.1f},{ty+TH-7}" fill="#1a2236"/>')
+
+                            L.append(f'    <text x="{tx+11}" y="{ty+18}" font-size="12" font-weight="800" fill="#f1f5f9" class="bc">{word.capitalize()}</text>')
+                            L.append(f'    <line x1="{tx+9}" y1="{ty+27}" x2="{tx+TW-9}" y2="{ty+27}" stroke="#2d3f66" stroke-width="1"/>')
+                            L.append(f'    <text x="{tx+11}" y="{ty+43}" font-size="10" fill="#94a3b8" class="bc">Mentioned <tspan fill="{sc}" font-weight="800">{total}×</tspan></text>')
+                            L.append(f'    <text x="{tx+11}" y="{ty+59}" font-size="10" fill="#94a3b8" class="bc">😊 {pos}  😐 {neu}  😞 {neg}</text>')
+                            L.append(f'  </g>')
+                            L.append('</g>')  # bubble group
+
+                    L.append('</svg>')
+                    return "".join(L).replace("\n", "")
+
+                # ─────────────────────────────────────────────────────────────────────────────
+                # MAIN RENDERER
+                # ─────────────────────────────────────────────────────────────────────────────
+
+                def render_word_insights(df_sent, sent_col, q_text_to_id, form_schema, form_schema_full):
+                    # ── CSS ────────────────────────────────────────────────────────────────────
+                    st.markdown("""
+                    <style>
+                    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap');
+                    .wi { font-family:'DM Sans','Mulish',sans-serif; }
+
+                    .wi-legend {
+                        display:flex; gap:1.3rem; flex-wrap:wrap; align-items:center;
+                        background:#0d1526; border:1px solid #1e2f4a; border-radius:10px;
+                        padding:.65rem 1.1rem; margin:.5rem 0 1rem; font-size:.78rem;
+                    }
+                    .wi-legend-lbl { font-size:.68rem; font-weight:700; color:#4a6fa5;
+                                    text-transform:uppercase; letter-spacing:.08em; }
+                    .wi-li { display:flex; align-items:center; gap:.4rem; font-weight:600; color:#94a3b8; }
+                    .wi-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+                    /* chip panel */
+                    .wi-dim-hdr {
+                        display:flex; align-items:center; gap:.5rem;
+                        padding:.6rem .9rem; font-weight:800; font-size:.75rem;
+                        border-radius:10px 10px 0 0; border-bottom:2px solid;
+                        text-transform:uppercase; letter-spacing:.07em;
+                    }
+                    .wi-chip-area { padding:.65rem .65rem .65rem; display:flex; flex-direction:column; gap:.38rem; }
+
+                    .wi-panel {
+                        background:#fff; border:2px solid #e0e7ff; border-radius:14px;
+                        padding:1.2rem 1.4rem; margin-top:1rem;
+                        box-shadow:0 4px 20px rgba(26,50,99,.09);
+                        animation:wi-slide .22s ease;
+                    }
+                    @keyframes wi-slide{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+                    .wi-ptitle { font-size:.98rem; font-weight:800; color:#1e293b; margin-bottom:.22rem; }
+                    .wi-psub   { font-size:.76rem; color:#64748b; margin-bottom:.85rem; }
+
+                    .wi-quote {
+                        background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;
+                        padding:.78rem .95rem; margin-bottom:.5rem; border-left:4px solid;
+                    }
+                    .wi-qtxt  { font-size:.87rem; color:#1e293b; line-height:1.65; margin-bottom:.42rem; }
+                    .wi-qmeta { font-size:.68rem; color:#94a3b8; display:flex; gap:.85rem; flex-wrap:wrap; }
+                    .wi-sbadge{
+                        display:inline-flex;align-items:center;gap:.3rem;
+                        font-size:.65rem;font-weight:700;padding:.1rem .48rem;border-radius:999px;
+                    }
+
+                    .wi-statbar {
+                        display:flex; gap:1.8rem; flex-wrap:wrap; margin-top:.85rem;
+                        padding:.6rem .9rem; background:#f8fafc;
+                        border-radius:10px; border:1px solid #e2e8f0;
+                        font-size:.76rem; color:#64748b;
+                    }
+
+                    @media(max-width:680px){
+                        .wi-legend { gap:.7rem; }
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+
+                    # ── Section header ─────────────────────────────────────────────────────────
+                    st.markdown("""
+                    <div class="section-head wi" style="margin-top:1.4rem;">
+                        📊 Frequently Used Words
+                    </div>
+                    <p class="wi" style="font-size:.82rem;color:#64748b;margin:-.15rem 0 .5rem;">
+                        Words commuters use most, grouped by SERVQUAL dimension.
+                        <strong>Hover</strong> a bubble for a quick summary.
+                        <strong>Click</strong> a word chip below to read the exact quotes.
+                    </p>
+                    """, unsafe_allow_html=True)
+
+                    # ── Data ───────────────────────────────────────────────────────────────────
+                    # Get excluded words from form_meta
+                    excluded_words = []
+                    try:
+                        meta_res = conn.client.table("form_meta").select("excluded_bubble_words").eq("form_id", current_form_id).eq("admin_email", admin_email).limit(1).execute()
+                        if meta_res.data:
+                            excluded_words = meta_res.data[0].get("excluded_bubble_words", [])
+                    except:
+                        pass
+                    
+                    dimension_insights, bubble_resp_map = extract_word_insights(
+                        df_sent, sent_col, q_text_to_id, form_schema, form_schema_full, excluded_words
+                    )
+
+                    if not dimension_insights:
+                        st.markdown("""<div class="empty-tab">
+                            <div class="icon">💬</div>
+                            <p>No word patterns found yet.<br>Minimum 2 mentions per word required.</p>
+                        </div>""", unsafe_allow_html=True)
+                        return
+
+                    active_dims = [dim for dim in DIMENSION_ORDER if dim in dimension_insights and len(dimension_insights[dim]) > 0]
+
+                    # If no dimensions have enough words, stop rendering the chart
+                    if not active_dims:
+                        st.markdown("""<div class="empty-tab">
+                            <div class="icon">💬</div>
+                            <p>No word patterns found yet.<br>Minimum 2 mentions per word required.</p>
+                        </div>""", unsafe_allow_html=True)
+                        return
+                    # ══════════════════════════════════════════════════════════════════════════
+                    # PART 1 — SVG BUBBLE CHART
+                    # ══════════════════════════════════════════════════════════════════════════
+                    st.markdown("""
+                    <div class="wi-legend wi">
+                        <span class="wi-legend-lbl">Reading guide:</span>
+                        <div class="wi-li">
+                            <div class="wi-dot" style="background:#4ade80;box-shadow:0 0 6px #4ade8077;"></div>
+                            Overall Positive
+                        </div>
+                        <div class="wi-li">
+                            <div class="wi-dot" style="background:#f87171;box-shadow:0 0 6px #f8717177;"></div>
+                            Overall Negative
+                        </div>
+                        <div class="wi-li">
+                            <div class="wi-dot" style="background:#94a3b8;"></div>Overall Neutral
+                        </div>
+                        <div class="wi-li" style="border-left:1px solid #1e2f4a;padding-left:1.2rem;">
+                            📏 Higher and Bigger = mentioned more often
+                        </div>
+                        <div class="wi-li">🔢 Badge = exact count</div>
+                        <div class="wi-li">🖱️ Hover for breakdown</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    svg = build_svg_bubble_chart(dimension_insights)
+                    st.markdown(f"<div>{svg}</div>", unsafe_allow_html=True)
+
+                    # ══════════════════════════════════════════════════════════════════════════
+                    # PART 2 — INTERACTIVE WORD CHIPS
+                    # ══════════════════════════════════════════════════════════════════════════
+                    st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
+                    st.markdown("""
+                    <div class="section-head wi" style="margin-top:.5rem;">
+                        🔍 Click a Word to Read Respondent Quotes
+                    </div>
+                    <p class="wi" style="font-size:.82rem;color:#64748b;margin:-.15rem 0 .8rem;">
+                        Each pill is a word + the aspect it describes.
+                        Tap one to expand the exact feedback behind it.
+                    </p>
+                    """, unsafe_allow_html=True)
+
+                    if "wi_selected_bubble" not in st.session_state:
+                        st.session_state.wi_selected_bubble = None
+
+                    cols = st.columns(len(active_dims), gap="small")
+
+                    for ci, dim in enumerate(active_dims):
+                        theme   = DIM_THEME[dim]
+                        bubbles = dimension_insights[dim]
+                        with cols[ci]:
                             st.markdown(f"""
-                            <div style="margin-bottom:.7rem;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:.2rem;">
-                                <span style="font-size:.78rem;font-weight:700;color:rgb(26,50,99);">{display_dim}</span>
-                                <span style="font-size:.78rem;font-weight:700;color:{color};">{mean_val:.2f}/5</span>
-                            </div>
-                            <div style="background:rgba(84,119,146,0.12);border-radius:999px;height:7px;overflow:hidden;">
-                                <div style="width:{pct:.1f}%;height:100%;border-radius:999px;background:{color};transition:width .4s;"></div>
-                            </div>
+                            <div class="wi wi-dim-hdr"
+                                style="background:{theme['bg']};color:{theme['dark']};
+                                        border-color:{theme['accent']};">
+                                {theme['icon']} {dim}
                             </div>""", unsafe_allow_html=True)
 
-        st.markdown("""<div style="height: 2rem;"></div>""", unsafe_allow_html=True)
-        with st.expander("📊 Quantitative Data", expanded=True):
-            st.markdown("""
-            <div style="background:rgba(26,50,99,0.06);border:1px solid rgba(26,50,99,0.18);
-                        border-left:4px solid rgb(26,50,99);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
-            <div style="font-size:.72rem;font-weight:800;color:rgb(26,50,99);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;">Quantitative Guide</div>
-            <div style="font-size:.8rem;color:rgb(60,100,130);line-height:1.6;">
-                This tab is for <strong>numeric (Likert) ratings</strong> about land public transportation.<br>
-                <strong>Likert Response Log:</strong> each numeric answer with question text and time.
-            </div>
-            </div>
-            """, unsafe_allow_html=True)
+                            # ... (sa loob ng render_word_insights, after st.markdown ng Click a Word header)
+                            for b in bubbles:
+                                bk   = b["bubble_key"]
+                                sent = b["sentiment"]
+                                word = b["word"].capitalize()
+                                cnt  = b["total"]
+                                em   = SENT_EMOJI[sent]
+                                is_s = st.session_state.wi_selected_bubble == bk
 
-            if not has_any_rating_data:
-                st.markdown("""<div class="empty-tab"><div class="icon">📊</div>
-                  <p>No rating scores available yet.</p>
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="section-head">Likert Response Log</div>', unsafe_allow_html=True)
-                likert_rows = []
-                for _, row in df.iterrows():
-                    ans_map = row.get("answers", {})
-                    submitted = row.get("created_at", None)
-                    if not isinstance(ans_map, dict):
-                        continue
-                    for question, answer in ans_map.items():
-                        score = pd.to_numeric(answer, errors="coerce")
-                        if pd.Series(score).isna().all():
-                            continue
-                        question_text = str(question)
-                        base_question = re.sub(r"\s\(\d+\)$", "", question_text).strip()
-                        schema_scale = question_scale_map.get(question_text) or question_scale_map.get(base_question)
-                        if schema_scale is not None and schema_scale > 1:
-                            q_scale_max = float(schema_scale)
+                                clicked = st.button(
+                                    f"{em} **{word}** &nbsp;`{cnt}×`", # Tinanggal yung subject arrow
+                                    key=f"wi_btn_{bk}",
+                                    use_container_width=True,
+                                    help=f"{cnt} mention(s) · {sent} · Click to read quotes",
+                                )
+# (Ito yung dulo nung loop para sa buttons)
+                                if clicked:
+                                    st.session_state.wi_selected_bubble = None if is_s else bk
+                                    st.rerun()
+
+                    # ══════════════════════════════════════════════════════════════════════════
+                    # 👇 PANSININ ANG SPACING DITO: Naka-align na dapat 'to pabalik sa kaliwa
+                    # ══════════════════════════════════════════════════════════════════════════
+                    
+                    # ── Quote panel ────────────────────────────────────────────────────────────
+                    sel = st.session_state.wi_selected_bubble
+                    if sel and sel in bubble_resp_map:
+                        parts    = sel.split("|")
+                        sel_word = parts[0].capitalize() 
+                        sel_dim  = parts[1] if len(parts) > 1 else ""
+                        resps    = bubble_resp_map[sel]
+                        theme    = DIM_THEME.get(sel_dim, {"accent":"#6366f1","bg":"#eef2ff","dark":"#4f46e5","icon":"💬"})
+
+                        sc = {"POSITIVE":0,"NEGATIVE":0,"NEUTRAL":0}
+                        for r in resps:
+                            s = r.get("Sentiment","NEUTRAL").upper()
+                            if s in sc: sc[s] += 1
+
+                        # NET SENTIMENT SCORE LOGIC PARA SA QUOTE PANEL
+                        total_quotes = sc["POSITIVE"] + sc["NEGATIVE"] + sc["NEUTRAL"]
+                        if total_quotes > 0:
+                            net_score_quotes = ((sc["POSITIVE"] - sc["NEGATIVE"]) / total_quotes) * 100
+                            if net_score_quotes > 50:
+                                dom_cap = "Positive"
+                            elif net_score_quotes < -50:
+                                dom_cap = "Negative"
+                            else:
+                                dom_cap = "Neutral"
                         else:
-                            q_scores = pd.to_numeric(
-                                df["answers"].apply(lambda a: a.get(question) if isinstance(a, dict) else None),
-                                errors="coerce",
+                            dom_cap = "Neutral"
+
+                        st.markdown(f"""
+                        <div class="wi-panel wi">
+                            <div class="wi-ptitle">
+                                {theme['icon']} Word: "{sel_word}"
+                                &nbsp;<span style="background:{theme['bg']};color:{theme['dark']};
+                                            padding:.08rem .52rem;border-radius:999px;font-size:.7rem;
+                                            font-weight:800;border:1px solid {theme['accent']}44;">{sel_dim}</span>
+                                &nbsp;<span style="background:{SENT_BG[dom_cap]};color:{SENT_DARK[dom_cap]};
+                                            padding:.08rem .52rem;border-radius:999px;font-size:.7rem;
+                                            font-weight:800;">{SENT_EMOJI[dom_cap]} {dom_cap} overall</span>
+                            </div>
+                            <div class="wi-psub">
+                                {len(resps)} quote{"s" if len(resps)!=1 else ""} —
+                                😊 {sc["POSITIVE"]} pos &nbsp;·&nbsp;
+                                😐 {sc["NEUTRAL"]} neu &nbsp;·&nbsp;
+                                😞 {sc["NEGATIVE"]} neg
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        for resp in resps[:15]:
+                            raw_s    = resp.get("Sentiment","NEUTRAL").upper()
+                            sent_cap = raw_s.capitalize() if raw_s.lower() in ("positive","negative","neutral") else "Neutral"
+                            sc2      = SENT_DARK[sent_cap]
+                            sb       = SENT_BG[sent_cap]
+                            se       = SENT_EMOJI[sent_cap]
+                            ans      = resp.get("Answer","")
+                            q        = resp.get("Question","")
+                            conf     = resp.get("Confidence","N/A")
+                            sub      = resp.get("Submitted","")
+
+                            # I-highlight yung nahanap na word
+                            hi = re.sub(
+                                rf'\b({re.escape(sel_word.lower())})\b',
+                                r'<mark style="background:#fef9c3;border-radius:3px;padding:0 2px;">\1</mark>',
+                                ans, flags=re.IGNORECASE
                             )
-                            q_max = q_scores.max()
-                            q_scale_max = float(q_max) if pd.notna(q_max) and q_max > 5 else 5
-                        score_norm = normalize_to_5(float(score), q_scale_max)
-                        scale_max_int = int(q_scale_max) if float(q_scale_max).is_integer() else round(float(q_scale_max), 2)
-                        q_dimension = form_schema.get(question_text, {}).get("dimension") or form_schema.get(base_question, {}).get("dimension")
-                        likert_rows.append({
-                            "Question": question_text,
-                            "Dimension": q_dimension if q_dimension else "Untagged",
-                            "Score": int(score) if float(score).is_integer() else float(score),
-                            "Score (Selected Scale)": f"{int(score) if float(score).is_integer() else round(float(score), 2)}/{scale_max_int}",
-                            "ScoreNormalized": round(float(score_norm), 2),
-                            "Submitted": submitted,
-                        })
 
-                if likert_rows:
-                    likert_df = pd.DataFrame(likert_rows)
-                    likert_df["Submitted"] = pd.to_datetime(likert_df["Submitted"], errors="coerce")
+                            st.markdown(f"""
+                            <div class="wi-quote" style="border-left-color:{sc2};">
+                                <div class="wi-qtxt">"{hi}"</div>
+                                <div class="wi-qmeta">
+                                    <span class="wi-sbadge" style="background:{sb};color:{sc2};">{se} {sent_cap}</span>
+                                    <span>📊 {conf} confidence</span>
+                                    <span>🕒 {sub}</span>
+                                </div>
+                                <div class="wi-qmeta" style="margin-top:.3rem;padding-top:.28rem;border-top:1px solid #f1f5f9;">
+                                    <span><strong>Q:</strong> {q[:130]}{"…" if len(q)>130 else ""}</span>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
-                    q_avg = (
-                        likert_df.groupby("Question", as_index=False)["ScoreNormalized"]
-                        .mean().rename(columns={"ScoreNormalized": "Average Score"})
-                    )
-                    q_avg["Responses"] = likert_df.groupby("Question").size().values
-                    q_avg = q_avg.sort_values("Average Score", ascending=False)
-                    top_n = q_avg.head(5)
-                    bottom_n = q_avg.tail(5)
-                    top_bottom = pd.concat([top_n, bottom_n], ignore_index=True).drop_duplicates(subset=["Question"])
-                    top_bottom["Category"] = top_bottom["Question"].isin(top_n["Question"]).map({True: "Top", False: "Bottom"})
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        if len(resps) > 15:
+                            st.caption(f"Showing 15 of {len(resps)} quotes.")
 
-                    st.altair_chart(
-                        alt.Chart(top_bottom).mark_bar(cornerRadiusEnd=4).encode(
-                            y=alt.Y("Question:N", sort="-x", title="Question"),
-                            x=alt.X("Average Score:Q", scale=alt.Scale(domain=[0, 5]), title="Average Score (/5)"),
-                            color=alt.Color("Average Score:Q",
-                                            scale=alt.Scale(domain=[0, 5], range=["#b03a2e", "#ffc570", "#4a7c59"]),
-                                            legend=alt.Legend(title="Score (/5)")),
-                            tooltip=["Question:N", alt.Tooltip("Average Score:Q", format=".2f"), "Responses:Q", "Category:N"],
-                        ).properties(height=280),
-                        use_container_width=True,
-                    )
+                        if st.button("✖ Close quotes", key=f"wi_close_{sel}"):
+                            st.session_state.wi_selected_bubble = None
+                            st.rerun()
 
-                    st.markdown('<div class="section-head">Score Distribution</div>', unsafe_allow_html=True)
-                    st.caption("Breakdown of how many respondents gave each score per question.")
-                    score_dist = []
-                    for question in likert_df["Question"].unique():
-                        q_data = likert_df[likert_df["Question"] == question]
-                        q_dim = q_data["Dimension"].iloc[0] if len(q_data) > 0 else "Untagged"
-                        scale_str = q_data["Score (Selected Scale)"].iloc[0] if len(q_data) > 0 else "0/5"
-                        sm_v = int(scale_str.split("/")[1]) if "/" in scale_str else 5
-                        sc_counts = q_data["Score"].value_counts().sort_index()
-                        row_d = {"Question": question, "Dimension": q_dim, "Total Responses": len(q_data)}
-                        for sc_v in range(1, int(sm_v) + 1):
-                            row_d[f"Score {sc_v}"] = int(sc_counts.get(sc_v, 0))
-                        score_dist.append(row_d)
-                    if score_dist:
-                        st.dataframe(pd.DataFrame(score_dist), use_container_width=True, hide_index=True, height=300)
-                else:
-                    st.info("No Likert responses found in the selected date range.")
+                    # ── Stats footer ───────────────────────────────────────────────────────────
+                    tp = sum(len(v) for v in dimension_insights.values())
+                    tm = sum(b["total"] for v in dimension_insights.values() for b in v)
+                    st.markdown(f"""
+                    <div class="wi-statbar wi">
+                        <span>📊 <strong>{tp}</strong> word patterns found</span>
+                        <span>🔢 <strong>{tm}</strong> total mentions analysed</span>
+                        <span>📐 Words with ≥ 2 mentions shown</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # ══════════════════════════════════════════════════════════════════════════
+                # 👇 PANSININ ANG SPACING DITO: Naka-align dapat ito sa "def render_word_insights"
+                # ══════════════════════════════════════════════════════════════════════════
+                render_word_insights(df_sent, sent_col, q_text_to_id, form_schema, form_schema_full)
 
     # ─────────────────────────────────
     # TAB 3 — Database

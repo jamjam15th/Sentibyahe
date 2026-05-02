@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
 from st_supabase_connection import SupabaseConnection
+import emoji
 
 from sentiment_compare_utils import (
     COMPARISON_MODEL_CHOICES,
@@ -144,9 +145,9 @@ def load_sentiment_model():
             if os.path.exists(local_model_path) and os.path.exists(os.path.join(local_model_path, "model.safetensors")):
                 model_path = local_model_path
             else:
-                model_path = "jamjam15th/land-public-transportation-model-2"
+                model_path = "jamjam15th/chelles-model"
         else:
-            model_path = "jamjam15th/land-public-transportation-model-2"
+            model_path = "jamjam15th/chelles-model"
         
         return transformers.pipeline(
             "sentiment-analysis",
@@ -167,6 +168,36 @@ def load_comparison_pipeline(model_id: str):
 
 
 classifier = load_sentiment_model()
+
+def demojize_text(text: str) -> str:
+    """
+    Convert emojis to their text descriptions for better sentiment analysis.
+    
+    WHY THIS MATTERS:
+    When someone submits feedback with emojis like "Great service! 👍", the AI sentiment
+    analyzer struggles to understand the emoji because it reads it as a symbol, not words.
+    
+    WHAT IT DOES:
+    This function converts emojis to text so the AI can understand them:
+    - Before: "MRT was late 😭" 
+    - After:  "MRT was late :loudly_crying_face:"
+    
+    Now the AI sees the word "crying_face" and understands the emotional context (sadness).
+    This makes sentiment analysis more accurate.
+    
+    REAL EXAMPLES:
+    - 👍 becomes :thumbs_up: → AI knows it's positive
+    - 😭 becomes :loudly_crying_face: → AI knows it's negative/sad
+    - ❤️ becomes :red_heart: → AI knows it's affectionate
+    - 😤 becomes :angry_face: → AI knows it's frustrated
+    
+    USED IN:
+    - Overall response sentiment analysis
+    - Per-question sentiment analysis
+    Before analyzing any feedback, emojis are converted to text so the model understands
+    the emotional tone.
+    """
+    return emoji.demojize(text, delimiters=(':', ':'))
 
 conn = st.connection("supabase", type=SupabaseConnection)
 
@@ -207,7 +238,9 @@ with tab_single:
     if st.button("🚀 Analyze Sentiment"):
         if user_input.strip():
             # 🧠 Brain 1: Sentiment Analysis
-            results = _unwrap(classifier(user_input.strip()))
+            # Convert emojis to text first for better understanding
+            processed_text = demojize_text(user_input.strip())
+            results = _unwrap(classifier(processed_text))
             scores_dict = {
                 label_map.get(res["label"], str(res["label"]).capitalize()): res["score"]
                 for res in results
@@ -270,7 +303,9 @@ with tab_batch:
                     
                     for text in df["feedback"].astype(str):
                         # 🧠 Brain 1: Sentiment Analysis
-                        seq = _unwrap(classifier(text))
+                        # Convert emojis to text for better understanding
+                        processed_text = demojize_text(text)
+                        seq = _unwrap(classifier(processed_text))
                         top_res = max(seq, key=lambda x: x["score"])
                         sentiments.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
                         confidences.append(round(top_res["score"], 4))
@@ -382,7 +417,9 @@ with tab_compare:
                 our_confidences = []
                 
                 for text in fresh_df["feedback"].astype(str):
-                    seq = _unwrap(classifier(text))
+                    # Convert emojis to text for better understanding
+                    processed_text = demojize_text(text)
+                    seq = _unwrap(classifier(processed_text))
                     top_res = max(seq, key=lambda x: x["score"])
                     our_predictions.append(label_map.get(top_res["label"], str(top_res["label"]).capitalize()))
                     our_confidences.append(round(top_res["score"], 4))
